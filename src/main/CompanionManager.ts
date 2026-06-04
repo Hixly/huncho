@@ -140,7 +140,7 @@ export class CompanionManager {
       this.trayManager.minimizePanel();
     });
 
-    // IPC: quit (tray right-click → Quit Duxy)
+    // IPC: quit (tray right-click → Quit Huncho)
     ipcMain.on(IPC.QUIT, () => {
       app.quit();
       setTimeout(() => process.exit(0), 1000);
@@ -183,7 +183,7 @@ export class CompanionManager {
   private async handlePttPress(): Promise<void> {
     console.log(`[CompanionManager] PTT pressed (current state: ${this.state})`);
 
-    // If Duxy is mid-response, pressing PTT stops it and returns to idle —
+    // If Huncho is mid-response, pressing PTT stops it and returns to idle —
     // the user then presses PTT again when ready to ask their next question.
     // This avoids capturing silence/breath as a spurious recording.
     if (this.state === 'processing' || this.state === 'responding') {
@@ -476,3 +476,4 @@ export class CompanionManager {
     }
   }
 }
+

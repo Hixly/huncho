@@ -204,3 +204,4 @@ export class ClaudeAPIClient extends EventEmitter {
     this._firedTags.clear();
   }
 }
+

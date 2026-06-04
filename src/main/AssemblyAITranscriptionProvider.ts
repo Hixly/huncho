@@ -187,3 +187,4 @@ export class AssemblyAITranscriptionProvider extends EventEmitter {
     console.log('[AssemblyAI] Destroyed');
   }
 }
+

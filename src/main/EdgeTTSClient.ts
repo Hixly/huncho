@@ -13,7 +13,7 @@ try {
   console.error('[EdgeTTS] Failed to load msedge-tts:', err);
 }
 
-// Brian = casual, approachable, warm — perfect voice for Duxy the duck companion
+// Brian = casual, approachable, warm — perfect voice for Huncho the duck companion
 const VOICE = 'en-US-BrianNeural';
 
 export class EdgeTTSClient {
@@ -102,3 +102,4 @@ export class EdgeTTSClient {
     }
   }
 }
+

@@ -39,17 +39,17 @@ export class TrayManager {
     }
 
     this.tray = new Tray(icon);
-    this.tray.setToolTip('Duxy — Your Windows AI Companion\nAlt+D to speak');
+    this.tray.setToolTip('Huncho — Your Windows AI Companion\nAlt+D to speak');
 
     this.tray.on('click', () => this.togglePanel());
     this.tray.on('double-click', () => this.togglePanel());
 
     this.tray.on('right-click', () => {
       const menu = Menu.buildFromTemplate([
-        { label: 'Open Duxy', click: () => this.showPanel() },
+        { label: 'Open Huncho', click: () => this.showPanel() },
         { label: 'Reset Position', click: () => this.resetPosition() },
         { type: 'separator' },
-        { label: 'Quit Duxy', click: () => app.quit() },
+        { label: 'Quit Huncho', click: () => app.quit() },
       ]);
       this.tray!.popUpContextMenu(menu);
     });
@@ -220,3 +220,4 @@ export class TrayManager {
     }
   }
 }
+

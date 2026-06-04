@@ -1,5 +1,5 @@
-appId: com.duxy.app
-productName: Duxy
+﻿appId: com.huncho.app
+productName: Huncho
 directories:
   buildResources: assets
   output: release
@@ -22,3 +22,4 @@ extraResources:
     to: assets/
     filter:
       - "**/*"
+

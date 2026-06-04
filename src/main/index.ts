@@ -15,12 +15,12 @@ ipcMain.on('DUXY_QUIT', () => {
 // Prevent multiple instances
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
-  console.log('[Duxy] Another instance is already running. Exiting.');
+  console.log('[Huncho] Another instance is already running. Exiting.');
   app.quit();
 }
 
 // App user model ID for Windows (required for tray to work correctly)
-app.setAppUserModelId('com.duxy.app');
+app.setAppUserModelId('com.huncho.app');
 
 // Allow audio autoplay in hidden/inactive windows (needed for TTS playback)
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -49,7 +49,7 @@ function getOverlayHtmlPath(): string {
 }
 
 app.whenReady().then(async () => {
-  console.log('[Duxy] App ready, initializing...');
+  console.log('[Huncho] App ready, initializing...');
 
   // Grant microphone permission so Web Speech API can access the mic
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
@@ -86,7 +86,7 @@ app.whenReady().then(async () => {
   // Start global hotkey monitor
   hotkeyMonitor.start();
 
-  console.log('[Duxy] Ready — press Ctrl+Alt to speak');
+  console.log('[Huncho] Ready — press Ctrl+Alt to speak');
 
   // Handle second-instance (focus panel)
   app.on('second-instance', () => {
@@ -95,7 +95,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('will-quit', () => {
-  console.log('[Duxy] Shutting down...');
+  console.log('[Huncho] Shutting down...');
   hotkeyMonitor?.stop();
   companionManager?.destroy();
   overlayManager?.destroy();
@@ -104,14 +104,15 @@ app.on('will-quit', () => {
 
 // Prevent app from quitting when all windows are closed (tray-only app)
 app.on('window-all-closed', () => {
-  // Do nothing — Duxy is a tray-only app, keep running when windows are closed
+  // Do nothing — Huncho is a tray-only app, keep running when windows are closed
 });
 
 // Handle uncaught errors gracefully
 process.on('uncaughtException', (err) => {
-  console.error('[Duxy] Uncaught exception:', err);
+  console.error('[Huncho] Uncaught exception:', err);
 });
 
 process.on('unhandledRejection', (reason) => {
-  console.error('[Duxy] Unhandled rejection:', reason);
+  console.error('[Huncho] Unhandled rejection:', reason);
 });
+

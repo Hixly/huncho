@@ -59,3 +59,4 @@ export class GlobalHotkeyMonitor extends EventEmitter {
     }
   }
 }
+

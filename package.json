@@ -1,7 +1,7 @@
 {
-  "name": "duxy",
+  "name": "huncho",
   "version": "0.1.0",
-  "description": "Your Windows AI companion — voice-powered assistant with screen awareness",
+  "description": "Huncho — your personal hands-free AI assistant that drives the browser by voice",
   "main": "dist/main/index.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:main\" \"npm run dev:panel\" \"npm run dev:overlay\"",
@@ -36,9 +36,9 @@
     "ws": "^8.18.0"
   },
   "build": {
-    "appId": "com.duxy.app",
-    "productName": "Duxy",
-    "copyright": "Copyright © 2026 Duxy.Tech",
+    "appId": "com.huncho.app",
+    "productName": "Huncho",
+    "copyright": "Copyright © 2026 Huncho",
     "directories": {
       "buildResources": "assets",
       "output": "release"
@@ -57,14 +57,14 @@
     "win": {
       "target": "nsis",
       "icon": "assets/icon.ico",
-      "artifactName": "Duxy-Setup-${version}.exe"
+      "artifactName": "Huncho-Setup-${version}.exe"
     },
     "nsis": {
       "oneClick": true,
       "perMachine": false,
       "allowToChangeInstallationDirectory": false,
       "deleteAppDataOnUninstall": false,
-      "shortcutName": "Duxy"
+      "shortcutName": "Huncho"
     }
   }
 }

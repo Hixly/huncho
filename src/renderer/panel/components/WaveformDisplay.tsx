@@ -79,3 +79,4 @@ export const WaveformDisplay: React.FC<WaveformDisplayProps> = ({ level, isActiv
     </div>
   );
 };
+

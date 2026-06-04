@@ -187,7 +187,7 @@ function pickBestVoice(): SpeechSynthesisVoice | null {
   const voices = speechSynthesis.getVoices();
   if (voices.length === 0) return null;
 
-  // Priority list: natural-sounding male voices (warm, friendly = Duxy vibe)
+  // Priority list: natural-sounding male voices (warm, friendly = Huncho vibe)
   const preferenceOrder = [
     'Microsoft Ryan Online',    // Neural, natural male
     'Microsoft Guy Online',     // Neural, natural male
@@ -247,3 +247,4 @@ if (container) {
   const root = createRoot(container);
   root.render(<App />);
 }
+

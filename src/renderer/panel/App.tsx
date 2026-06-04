@@ -79,7 +79,7 @@ const UserBubble: React.FC<{ text: string; timestamp?: number; pending?: boolean
   </div>
 );
 
-const DuxyBubble: React.FC<{ text: string; timestamp?: number; streaming?: boolean }> = ({ text, timestamp, streaming }) => (
+const HunchoBubble: React.FC<{ text: string; timestamp?: number; streaming?: boolean }> = ({ text, timestamp, streaming }) => (
   <div style={{ display: 'flex', alignItems: 'flex-end', gap: '7px' }}>
     <DuckLogo size={24} />
     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxWidth: '78%' }}>
@@ -111,7 +111,7 @@ const DuxyBubble: React.FC<{ text: string; timestamp?: number; streaming?: boole
   </div>
 );
 
-const DuxyTyping: React.FC = () => (
+const HunchoTyping: React.FC = () => (
   <div style={{ display: 'flex', alignItems: 'flex-end', gap: '7px' }}>
     <DuckLogo size={24} />
     <div style={{
@@ -244,7 +244,7 @@ export const App: React.FC = () => {
       if (msg.role === 'user') {
         items.push(<UserBubble key={`msg-${i}`} text={msg.text} timestamp={msg.timestamp} />);
       } else {
-        items.push(<DuxyBubble key={`msg-${i}`} text={msg.text} timestamp={msg.timestamp} />);
+        items.push(<HunchoBubble key={`msg-${i}`} text={msg.text} timestamp={msg.timestamp} />);
       }
     });
 
@@ -255,9 +255,9 @@ export const App: React.FC = () => {
 
     // Live streaming response or typing indicator
     if (isProcessing && !streamText) {
-      items.push(<DuxyTyping key="typing" />);
+      items.push(<HunchoTyping key="typing" />);
     } else if (streamText) {
-      items.push(<DuxyBubble key="streaming" text={streamText} streaming />);
+      items.push(<HunchoBubble key="streaming" text={streamText} streaming />);
     }
 
     return items;
@@ -301,7 +301,7 @@ export const App: React.FC = () => {
           <DuckLogo size={30} />
           <div>
             <div style={{ fontSize: '15px', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-              Duxy
+              Huncho
             </div>
             <div style={{ fontSize: '10px', color: DS.colors.textMuted, marginTop: '1px' }}>
               Your AI Companion
@@ -406,7 +406,7 @@ export const App: React.FC = () => {
                 border: `1px solid ${DS.colors.border}`,
                 borderRadius: '4px', padding: '1px 6px',
                 fontFamily: 'monospace', fontSize: '11px', color: DS.colors.textSecondary,
-              }}>Alt+D</span> to talk to Duxy
+              }}>Alt+D</span> to talk to Huncho
             </div>
           </div>
         )}
@@ -462,3 +462,4 @@ export const App: React.FC = () => {
     </div>
   );
 };
+

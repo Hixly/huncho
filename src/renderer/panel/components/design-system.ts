@@ -1,4 +1,4 @@
-// Duxy Design System — Golden Duck Yellow Theme
+// Huncho Design System — Golden Duck Yellow Theme
 export const DS = {
   colors: {
     // Backgrounds (layered elevation)
@@ -66,3 +66,4 @@ export const DS = {
 };
 
 export type DesignSystem = typeof DS;
+

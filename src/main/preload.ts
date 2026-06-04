@@ -109,3 +109,4 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Utilities
   getDisplayIndex,
 });
+

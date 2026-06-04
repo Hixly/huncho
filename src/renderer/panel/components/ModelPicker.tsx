@@ -48,3 +48,4 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({ currentModel, onModelC
     </div>
   );
 };
+

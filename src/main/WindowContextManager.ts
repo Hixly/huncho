@@ -2,7 +2,7 @@ import { execFile } from 'child_process';
 
 export interface WindowContext {
   app: string;   // e.g. "Code", "chrome", "slack"
-  title: string; // e.g. "App.tsx - duxy - Visual Studio Code"
+  title: string; // e.g. "App.tsx - huncho - Visual Studio Code"
 }
 
 // PowerShell script: get foreground window process name + title
@@ -18,7 +18,7 @@ try {
 } catch { Write-Output "|||" }
 `.trim();
 
-const IGNORED_APPS = new Set(['electron', 'duxy', 'explorer']);
+const IGNORED_APPS = new Set(['electron', 'huncho', 'explorer']);
 
 export function captureActiveWindow(): Promise<WindowContext> {
   return new Promise((resolve) => {
@@ -36,7 +36,7 @@ export function captureActiveWindow(): Promise<WindowContext> {
         const app = (parts[0] ?? '').trim().replace(/\.exe$/i, '');
         const title = (parts[1] ?? '').trim();
 
-        // Filter out Duxy's own windows
+        // Filter out Huncho's own windows
         if (IGNORED_APPS.has(app.toLowerCase())) {
           resolve({ app: '', title: '' });
           return;
@@ -48,3 +48,4 @@ export function captureActiveWindow(): Promise<WindowContext> {
     );
   });
 }
+
