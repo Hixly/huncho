@@ -1,4 +1,4 @@
-﻿appId: com.huncho.app
+appId: com.huncho.app
 productName: Huncho
 directories:
   buildResources: assets
@@ -22,4 +22,3 @@ extraResources:
     to: assets/
     filter:
       - "**/*"
-

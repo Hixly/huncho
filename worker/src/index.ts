@@ -1,5 +1,5 @@
 /**
- * Duxy Proxy Worker
+ * Huncho Proxy Worker
  * Proxies requests to Claude, ElevenLabs, and Groq (Whisper) APIs.
  * Keys stored as Cloudflare secrets.
  */
