@@ -1,0 +1,21 @@
+TRAY ICON — README
+==================
+
+Two icon files are needed in this folder:
+
+1. tray-icon.png  (16x16 or 32x32 PNG)
+   - Used by Electron for the system tray icon on Windows
+   - Recommended: white "D" lettermark on transparent background
+   - Can be 32x32; Windows will scale it down for the tray
+
+2. icon.ico  (256x256 ICO, multi-size recommended)
+   - Used by electron-builder for the installer and .exe
+   - Recommended sizes inside the ICO: 16, 32, 48, 64, 128, 256
+
+Quick way to generate:
+- Design a simple icon in Figma or Canva
+- Export as PNG, then convert to ICO using https://icoconvert.com/
+- Place both files here in /assets/
+
+The app will start without the icon (Electron falls back gracefully),
+but the tray icon will appear blank until tray-icon.png is present.

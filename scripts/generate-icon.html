@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; }
+  body { width: 256px; height: 256px; background: transparent; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c" width="256" height="256"></canvas>
+<script>
+const c = document.getElementById('c');
+const ctx = c.getContext('2d');
+const s = 256 / 44; // scale from viewBox 44x44 to 256x256
+
+ctx.scale(s, s);
+
+// Outer dark ring
+ctx.beginPath(); ctx.arc(22, 22, 21, 0, Math.PI*2);
+ctx.fillStyle = '#111'; ctx.fill();
+ctx.strokeStyle = '#333'; ctx.lineWidth = 0.5; ctx.stroke();
+
+// Yellow face
+ctx.beginPath(); ctx.arc(22, 23, 15.5, 0, Math.PI*2);
+ctx.fillStyle = '#F5C518'; ctx.fill();
+
+// Hair tuft
+ctx.beginPath();
+ctx.ellipse(22, 8.5, 3, 4.5, 0, 0, Math.PI*2);
+ctx.fillStyle = '#D4A800'; ctx.fill();
+// Tuft highlight
+ctx.beginPath();
+ctx.ellipse(20.5, 7.5, 1.5, 2.5, 0, 0, Math.PI*2);
+ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fill();
+
+// Glasses frames
+ctx.strokeStyle = '#111'; ctx.lineWidth = 2.5;
+ctx.beginPath(); ctx.arc(15, 22, 5.8, 0, Math.PI*2); ctx.stroke();
+ctx.beginPath(); ctx.arc(29, 22, 5.8, 0, Math.PI*2); ctx.stroke();
+
+// Bridge
+ctx.beginPath(); ctx.moveTo(20.8, 22); ctx.lineTo(23.2, 22);
+ctx.lineWidth = 2; ctx.stroke();
+
+// Left arm
+ctx.beginPath(); ctx.moveTo(9.2, 20); ctx.lineTo(9.5, 22);
+ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.stroke();
+
+// Right arm
+ctx.beginPath(); ctx.moveTo(34.8, 20); ctx.lineTo(34.5, 22);
+ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.stroke();
+
+// Pupils
+ctx.fillStyle = '#111';
+ctx.beginPath(); ctx.arc(15, 22, 2.8, 0, Math.PI*2); ctx.fill();
+ctx.beginPath(); ctx.arc(29, 22, 2.8, 0, Math.PI*2); ctx.fill();
+
+// Eye shines
+ctx.fillStyle = 'white';
+ctx.beginPath(); ctx.arc(16.2, 20.8, 1.2, 0, Math.PI*2); ctx.fill();
+ctx.beginPath(); ctx.arc(30.2, 20.8, 1.2, 0, Math.PI*2); ctx.fill();
+
+// Beak shadow
+ctx.beginPath();
+ctx.ellipse(22, 32.5, 6, 3, 0, 0, Math.PI*2);
+ctx.fillStyle = '#8B4500'; ctx.fill();
+
+// Beak
+ctx.beginPath();
+ctx.ellipse(22, 31, 6, 2.8, 0, 0, Math.PI*2);
+ctx.fillStyle = '#C06800'; ctx.fill();
+
+// Done — signal main process
+window.__iconDataURL = c.toDataURL('image/png');
+document.title = 'READY';
+</script>
+</body>
+</html>
