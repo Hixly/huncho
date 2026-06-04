@@ -41,34 +41,27 @@ function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
-// Duck SVG: yellow face, circular FRAME glasses (not filled), pupils, orange beak
+// Huncho diamond mascot — glowing gold elongated diamond (center shape of the Huncho crown logo)
 const DuckIcon: React.FC = () => (
-  <svg width={DUCK_SIZE} height={DUCK_SIZE} viewBox="0 0 44 44" style={{ display: 'block' }}>
-    {/* Outer dark ring */}
-    <circle cx="22" cy="22" r="21" fill="#111" stroke="#222" strokeWidth="1"/>
-    {/* Yellow face */}
-    <circle cx="22" cy="23" r="15.5" fill="#F5C518"/>
-    {/* Hair tuft */}
-    <ellipse cx="22" cy="8.5" rx="3" ry="4.5" fill="#D4A800"/>
-    <ellipse cx="20.5" cy="7.5" rx="1.5" ry="2.5" fill="#fff" opacity="0.25"/>
-    {/* Glasses frames — stroke only so yellow face shows through */}
-    <circle cx="15" cy="22" r="5.8" fill="none" stroke="#111" strokeWidth="2.5"/>
-    <circle cx="29" cy="22" r="5.8" fill="none" stroke="#111" strokeWidth="2.5"/>
-    {/* Glasses bridge */}
-    <line x1="20.8" y1="22" x2="23.2" y2="22" stroke="#111" strokeWidth="2"/>
-    {/* Left temple arm */}
-    <line x1="9.2" y1="20" x2="9.5" y2="22" stroke="#111" strokeWidth="2" strokeLinecap="round"/>
-    {/* Right temple arm */}
-    <line x1="34.8" y1="20" x2="34.5" y2="22" stroke="#111" strokeWidth="2" strokeLinecap="round"/>
-    {/* Pupils */}
-    <circle cx="15" cy="22" r="2.8" fill="#111"/>
-    <circle cx="29" cy="22" r="2.8" fill="#111"/>
-    {/* Eye shine highlights */}
-    <circle cx="16.2" cy="20.8" r="1.2" fill="white"/>
-    <circle cx="30.2" cy="20.8" r="1.2" fill="white"/>
-    {/* Beak — flat duck bill */}
-    <ellipse cx="22" cy="32.5" rx="6" ry="3" fill="#8B4500"/>
-    <ellipse cx="22" cy="31" rx="6" ry="2.8" fill="#C06800"/>
+  <svg width="28" height="40" viewBox="0 0 24 40" style={{ display: 'block', filter: 'url(#huncho-glow)' }}>
+    <defs>
+      <linearGradient id="huncho-gold" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#F2D17A" />
+        <stop offset="55%" stopColor="#C9A24B" />
+        <stop offset="100%" stopColor="#8C6A2A" />
+      </linearGradient>
+      <filter id="huncho-glow" x="-75%" y="-75%" width="250%" height="250%">
+        <feDropShadow dx="0" dy="0" stdDeviation="2.2" floodColor="#F2C45A" floodOpacity="0.95" />
+        <feDropShadow dx="0" dy="0" stdDeviation="5" floodColor="#C9A24B" floodOpacity="0.6" />
+      </filter>
+    </defs>
+    {/* outer elongated diamond (the crown's center peak) */}
+    <path d="M12 1 L19 14 L12 39 L5 14 Z"
+          fill="url(#huncho-gold)" stroke="#3A2A0E" strokeWidth="0.8" strokeLinejoin="round" />
+    {/* center ridge */}
+    <path d="M12 1 L12 39" stroke="#FFF2C8" strokeWidth="0.7" opacity="0.85" />
+    {/* upper facet */}
+    <path d="M5 14 L12 18 L19 14" fill="none" stroke="#FFF2C8" strokeWidth="0.6" opacity="0.6" />
   </svg>
 );
 
@@ -258,7 +251,7 @@ export const OverlayView: React.FC = () => {
           left: posRef.current.x - DUCK_HALF + DUCK_OFFSET_X,
           top: posRef.current.y - DUCK_HALF + DUCK_OFFSET_Y,
           width: DUCK_SIZE,
-          height: DUCK_SIZE,
+          height: 40,
           willChange: 'left, top, transform',
           filter: `drop-shadow(0 0 5px ${YELLOW_GLOW}) drop-shadow(0 2px 8px rgba(0,0,0,0.7))`,
         }}
