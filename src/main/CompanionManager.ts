@@ -11,6 +11,7 @@ import { OverlayManager } from './OverlayManager';
 import { TrayManager } from './TrayManager';
 import { ConversationStore } from './ConversationStore';
 import { captureActiveWindow, WindowContext } from './WindowContextManager';
+import { BrowserSurface } from './BrowserSurface';
 
 export class CompanionManager {
   private state: VoiceState = 'idle';
@@ -27,6 +28,8 @@ export class CompanionManager {
   private overlayManager: OverlayManager;
   private trayManager: TrayManager;
   private conversationStore: ConversationStore;
+
+  private browser: BrowserSurface | null = null;
 
   private pendingPipelineAbort = false;
   private transcriptTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -107,6 +110,24 @@ export class CompanionManager {
       }
 
       this.overlayManager.forwardCursorPointAt({ x, y, label: event.label, displayIndex: event.displayIndex });
+    });
+
+    this.claudeClient.on('toolUse', (event: { id: string; name: string; input: Record<string, unknown> }) => {
+      if (event.name !== 'navigate') {
+        console.warn(`[CompanionManager] Unknown tool: ${event.name}`);
+        return;
+      }
+      const url = typeof event.input.url === 'string' ? event.input.url : '';
+      if (!url) {
+        console.warn('[CompanionManager] navigate called without a url');
+        return;
+      }
+      if (!this.browser) {
+        console.warn('[CompanionManager] navigate called but no BrowserSurface attached');
+        return;
+      }
+      const final = this.browser.navigate(url);
+      console.log(`[CompanionManager] tool navigate("${url}") -> ${final ?? 'REJECTED'}`);
     });
 
     // Wire up hotkey monitor
@@ -446,6 +467,10 @@ export class CompanionManager {
         win.webContents.send(channel, payload);
       }
     }
+  }
+
+  setBrowserSurface(bs: BrowserSurface | null): void {
+    this.browser = bs;
   }
 
   getState(): VoiceState {

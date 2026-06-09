@@ -89,6 +89,7 @@ app.whenReady().then(async () => {
 
   // Initialize companion (connects to services)
   await companionManager.initialize();
+  companionManager.setBrowserSurface(mainWindow.getBrowserSurface());
 
   // Bridge: urlbar form submit -> BrowserSurface.navigate -> urlbar address update
   const browser = mainWindow.getBrowserSurface();
