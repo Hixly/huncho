@@ -1,5 +1,6 @@
 import { app, BrowserWindow, session, ipcMain } from 'electron';
 import * as path from 'path';
+import { IPC } from '../shared/ipc-types';
 import { DUXY_CONFIG } from './config';
 import { TrayManager } from './TrayManager';
 import { OverlayManager } from './OverlayManager';
@@ -74,7 +75,7 @@ app.whenReady().then(async () => {
 
   // Create the full-screen main window with the in-app browser
   mainWindow = new MainWindow();
-  mainWindow.create();
+  await mainWindow.create();
 
   // Create managers
   trayManager = new TrayManager(panelHtmlPath, DUXY_CONFIG.panelWidth, DUXY_CONFIG.panelHeight);
@@ -88,6 +89,15 @@ app.whenReady().then(async () => {
 
   // Initialize companion (connects to services)
   await companionManager.initialize();
+
+  // Bridge: urlbar form submit -> BrowserSurface.navigate -> urlbar address update
+  const browser = mainWindow.getBrowserSurface();
+  ipcMain.on(IPC.BROWSER_NAVIGATE, (_e, payload: { url: string }) => {
+    browser?.navigate(payload.url);
+  });
+  browser?.on('didNavigate', ({ url }: { url: string }) => {
+    mainWindow?.getUrlbarWebContents()?.send(IPC.BROWSER_DID_NAVIGATE, { url });
+  });
 
   // Start global hotkey monitor
   hotkeyMonitor.start();

@@ -108,5 +108,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Utilities
   getDisplayIndex,
+
+  // Browser navigation (urlbar renderer)
+  browserNavigate: (url: string) => ipcRenderer.send(IPC.BROWSER_NAVIGATE, { url }),
+  onBrowserDidNavigate: (cb: (p: { url: string }) => void) => {
+    const h = (_e: any, payload: { url: string }) => cb(payload);
+    ipcRenderer.on(IPC.BROWSER_DID_NAVIGATE, h);
+    return () => ipcRenderer.removeListener(IPC.BROWSER_DID_NAVIGATE, h);
+  },
 });
 

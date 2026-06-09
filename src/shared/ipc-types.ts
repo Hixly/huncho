@@ -27,6 +27,9 @@ export const IPC = {
   // TTS streaming
   TTS_ALL_SENT: 'DUXY_TTS_ALL_SENT',
   TTS_STOP: 'DUXY_TTS_STOP',
+  // Browser navigation
+  BROWSER_NAVIGATE: 'DUXY_BROWSER_NAVIGATE',
+  BROWSER_DID_NAVIGATE: 'DUXY_BROWSER_DID_NAVIGATE',
 } as const;
 
 export type VoiceState = 'idle' | 'listening' | 'processing' | 'responding';
@@ -129,6 +132,10 @@ export interface ElectronAPI {
 
   // Utilities
   getDisplayIndex: () => number;
+
+  // Browser navigation (urlbar renderer)
+  browserNavigate: (url: string) => void;
+  onBrowserDidNavigate: (cb: (payload: { url: string }) => void) => () => void;
 }
 
 declare global {

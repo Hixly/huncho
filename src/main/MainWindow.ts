@@ -1,4 +1,5 @@
 import { BaseWindow, screen, app } from 'electron';
+import * as path from 'path';
 import { BrowserSurface } from './BrowserSurface';
 
 const URLBAR_HEIGHT = 36; // px — reserves space for the dev URL bar at the top
@@ -12,8 +13,9 @@ const URLBAR_HEIGHT = 36; // px — reserves space for the dev URL bar at the to
 export class MainWindow {
   private window: BaseWindow | null = null;
   private browser: BrowserSurface | null = null;
+  private urlbarView: import('electron').WebContentsView | null = null;
 
-  create(): void {
+  async create(): Promise<void> {
     const display = screen.getPrimaryDisplay();
     const { x, y, width, height } = display.workArea;
 
@@ -33,6 +35,25 @@ export class MainWindow {
       height: height - URLBAR_HEIGHT,
     });
 
+    // URL bar in the top strip
+    const { WebContentsView } = await import('electron');
+    this.urlbarView = new WebContentsView({
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+      },
+    });
+    this.window.contentView.addChildView(this.urlbarView);
+    this.urlbarView.setBounds({ x: 0, y: 0, width, height: URLBAR_HEIGHT });
+
+    const urlbarHtml = process.env.NODE_ENV === 'development'
+      ? 'http://localhost:5175'
+      : path.join(__dirname, '../../dist/renderer/urlbar/index.html');
+    if (urlbarHtml.startsWith('http')) this.urlbarView.webContents.loadURL(urlbarHtml);
+    else this.urlbarView.webContents.loadFile(urlbarHtml);
+
     this.window.on('resize', () => this.layoutChildren());
     this.window.on('close', (e) => {
       // Don't actually close — Huncho is a long-running tray app. Hide instead.
@@ -50,6 +71,10 @@ export class MainWindow {
     return this.browser;
   }
 
+  getUrlbarWebContents(): import('electron').WebContents | null {
+    return this.urlbarView?.webContents ?? null;
+  }
+
   getWindow(): BaseWindow | null {
     return this.window;
   }
@@ -63,6 +88,8 @@ export class MainWindow {
   }
 
   destroy(): void {
+    this.urlbarView?.webContents.close();
+    this.urlbarView = null;
     this.browser?.destroy();
     this.browser = null;
     if (this.window && !this.window.isDestroyed()) {
@@ -81,5 +108,6 @@ export class MainWindow {
       width: w,
       height: h - URLBAR_HEIGHT,
     });
+    this.urlbarView?.setBounds({ x: 0, y: 0, width: w, height: URLBAR_HEIGHT });
   }
 }
