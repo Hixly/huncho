@@ -16,7 +16,7 @@ ipcMain.on('DUXY_QUIT', () => {
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   console.log('[Huncho] Another instance is already running. Exiting.');
-  app.quit();
+  app.exit(0); // hard-exit so this duplicate does NOT continue to initialize
 }
 
 // App user model ID for Windows (required for tray to work correctly)
@@ -87,6 +87,10 @@ app.whenReady().then(async () => {
   hotkeyMonitor.start();
 
   console.log('[Huncho] Ready — press Alt+D to talk (toggle: tap to start, tap to stop)');
+
+  // Show the panel + overlay on launch so Huncho is visible immediately
+  // (otherwise it's a tray-only app and the window stays hidden until the tray icon is clicked)
+  trayManager.showPanel();
 
   // Handle second-instance (focus panel)
   app.on('second-instance', () => {
