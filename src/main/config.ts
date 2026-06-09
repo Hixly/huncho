@@ -1,7 +1,7 @@
 export const DUXY_CONFIG = {
   workerBaseURL: 'https://duxy-worker.matthixon.workers.dev',
   defaultModel: 'claude-sonnet-4-5',
-  pushToTalkKey: { ctrl: true, shift: true, space: true }, // Ctrl+Shift+Space toggle
+  pushToTalkKey: { ctrl: true, shift: true, space: true }, // NOTE: currently unused - real hotkey is Alt+D, hardcoded in GlobalHotkeyMonitor.ts
   panelWidth: 320,
   panelHeight: 580,
   overlayAlwaysOnTop: true,

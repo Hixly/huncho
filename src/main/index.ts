@@ -86,7 +86,7 @@ app.whenReady().then(async () => {
   // Start global hotkey monitor
   hotkeyMonitor.start();
 
-  console.log('[Huncho] Ready — press Ctrl+Alt to speak');
+  console.log('[Huncho] Ready — press Alt+D to talk (toggle: tap to start, tap to stop)');
 
   // Handle second-instance (focus panel)
   app.on('second-instance', () => {
