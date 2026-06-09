@@ -5,6 +5,7 @@ import { TrayManager } from './TrayManager';
 import { OverlayManager } from './OverlayManager';
 import { GlobalHotkeyMonitor } from './GlobalHotkeyMonitor';
 import { CompanionManager } from './CompanionManager';
+import { MainWindow } from './MainWindow';
 
 // Quit handler — registered early so it works regardless of init state
 ipcMain.on('DUXY_QUIT', () => {
@@ -28,6 +29,7 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 // Disable hardware acceleration to prevent overlay rendering issues on some Windows configs
 // app.disableHardwareAcceleration();
 
+let mainWindow: MainWindow | null = null;
 let trayManager: TrayManager | null = null;
 let overlayManager: OverlayManager | null = null;
 let hotkeyMonitor: GlobalHotkeyMonitor | null = null;
@@ -70,6 +72,10 @@ app.whenReady().then(async () => {
   const panelHtmlPath = getPanelHtmlPath();
   const overlayHtmlPath = getOverlayHtmlPath();
 
+  // Create the full-screen main window with the in-app browser
+  mainWindow = new MainWindow();
+  mainWindow.create();
+
   // Create managers
   trayManager = new TrayManager(panelHtmlPath, DUXY_CONFIG.panelWidth, DUXY_CONFIG.panelHeight);
   overlayManager = new OverlayManager(overlayHtmlPath);
@@ -104,6 +110,7 @@ app.on('will-quit', () => {
   companionManager?.destroy();
   overlayManager?.destroy();
   trayManager?.destroy();
+  mainWindow?.destroy();
 });
 
 // Prevent app from quitting when all windows are closed (tray-only app)
