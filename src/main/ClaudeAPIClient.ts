@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import { DUXY_CONFIG } from './config';
+import { NAVIGATE_TOOL } from './tools/navigate-tool';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -29,6 +30,12 @@ export interface CursorPointEvent {
   y: number;
   label: string;
   displayIndex: number;
+}
+
+export interface ToolUseEvent {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
 }
 
 // Regex to find [POINT:x,y:description:screenN] tags
@@ -95,9 +102,11 @@ export class ClaudeAPIClient extends EventEmitter {
       stream: true,
       system: DUXY_CONFIG.systemPrompt,
       messages,
+      tools: [NAVIGATE_TOOL],
     };
 
     this._firedTags.clear(); // reset per-message
+    this._currentToolUse = null; // reset per-message tool-use accumulator
     console.log(`[ClaudeAPIClient] Sending request with model ${options.model}, ${options.screenshotBase64List.length} screenshot(s)`);
 
     const response = await fetch(`${DUXY_CONFIG.workerBaseURL}/chat`, {
@@ -152,6 +161,41 @@ export class ClaudeAPIClient extends EventEmitter {
               this.processCursorTags(fullText);
 
               this.emit('textChunk', { chunk, accumulated: fullText.replace(/\[POINT:\d+,\d+:[^:]+:screen\d+\]/g, '').trimEnd() });
+            } else if (
+              event.type === 'content_block_start' &&
+              event.content_block?.type === 'tool_use'
+            ) {
+              // A tool_use content block has begun — capture id + name; the input JSON
+              // will arrive as input_json_delta events that we accumulate below.
+              this._currentToolUse = {
+                id: event.content_block.id,
+                name: event.content_block.name,
+                inputBuf: '',
+              };
+              console.log(`[ClaudeAPIClient] tool_use start: ${event.content_block.name} (id=${event.content_block.id})`);
+            } else if (
+              event.type === 'content_block_delta' &&
+              event.delta?.type === 'input_json_delta' &&
+              this._currentToolUse
+            ) {
+              // Anthropic streams the tool input as JSON fragments
+              this._currentToolUse.inputBuf += event.delta.partial_json ?? '';
+            } else if (
+              event.type === 'content_block_stop' &&
+              this._currentToolUse
+            ) {
+              // Tool block complete — parse the buffered JSON and emit
+              const tu = this._currentToolUse;
+              this._currentToolUse = null;
+              let parsedInput: Record<string, unknown> = {};
+              try {
+                parsedInput = tu.inputBuf ? JSON.parse(tu.inputBuf) : {};
+              } catch (parseErr) {
+                console.warn(`[ClaudeAPIClient] Failed to parse tool input JSON: ${tu.inputBuf}`, parseErr);
+              }
+              const toolEvent: ToolUseEvent = { id: tu.id, name: tu.name, input: parsedInput };
+              console.log(`[ClaudeAPIClient] tool_use complete: ${tu.name}(${JSON.stringify(parsedInput)})`);
+              this.emit('toolUse', toolEvent);
             } else if (event.type === 'message_stop') {
               console.log('[ClaudeAPIClient] Stream complete');
             }
@@ -174,6 +218,7 @@ export class ClaudeAPIClient extends EventEmitter {
 
   // Track already-fired tags so we don't double-emit when scanning full text each chunk
   private _firedTags = new Set<string>();
+  private _currentToolUse: { id: string; name: string; inputBuf: string } | null = null;
 
   private processCursorTags(fullText: string): void {
     // Always scan full accumulated text — avoids missing tags split across chunks
@@ -202,6 +247,7 @@ export class ClaudeAPIClient extends EventEmitter {
       this.currentAbortController = null;
     }
     this._firedTags.clear();
+    this._currentToolUse = null;
   }
 }
 
