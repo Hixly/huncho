@@ -4,7 +4,7 @@ import { VoiceState, CursorPointAtPayload, AudioPowerLevelPayload, CursorPositio
 const YELLOW = '#F59E0B';
 const YELLOW_GLOW = 'rgba(245, 158, 11, 0.5)';
 
-const DUCK_SIZE = 28;        // px
+const DUCK_SIZE = 14;        // px
 const DUCK_HALF = DUCK_SIZE / 2;
 const DUCK_OFFSET_X = 22;   // px right of cursor tip — stays out of click zone
 const DUCK_OFFSET_Y = 14;   // px below cursor tip
@@ -43,7 +43,7 @@ function lerp(a: number, b: number, t: number): number {
 
 // Huncho diamond mascot — glowing gold elongated diamond (center shape of the Huncho crown logo)
 const DuckIcon: React.FC = () => (
-  <svg width="28" height="40" viewBox="0 0 24 40" style={{ display: 'block', filter: 'url(#huncho-glow)' }}>
+  <svg width="14" height="22" viewBox="0 0 24 40" style={{ display: 'block', filter: 'url(#huncho-glow)' }}>
     <defs>
       <linearGradient id="huncho-gold" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stopColor="#F2D17A" />
@@ -51,8 +51,8 @@ const DuckIcon: React.FC = () => (
         <stop offset="100%" stopColor="#8C6A2A" />
       </linearGradient>
       <filter id="huncho-glow" x="-75%" y="-75%" width="250%" height="250%">
-        <feDropShadow dx="0" dy="0" stdDeviation="2.2" floodColor="#F2C45A" floodOpacity="0.95" />
-        <feDropShadow dx="0" dy="0" stdDeviation="5" floodColor="#C9A24B" floodOpacity="0.6" />
+        <feDropShadow dx="0" dy="0" stdDeviation="1.4" floodColor="#F2C45A" floodOpacity="0.95" />
+        <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="#C9A24B" floodOpacity="0.6" />
       </filter>
     </defs>
     {/* outer elongated diamond (the crown's center peak) */}
@@ -251,7 +251,7 @@ export const OverlayView: React.FC = () => {
           left: posRef.current.x - DUCK_HALF + DUCK_OFFSET_X,
           top: posRef.current.y - DUCK_HALF + DUCK_OFFSET_Y,
           width: DUCK_SIZE,
-          height: 40,
+          height: 22,
           willChange: 'left, top, transform',
           filter: `drop-shadow(0 0 5px ${YELLOW_GLOW}) drop-shadow(0 2px 8px rgba(0,0,0,0.7))`,
         }}
@@ -259,7 +259,7 @@ export const OverlayView: React.FC = () => {
         {/* Ambient glow ring */}
         <div style={{
           position: 'absolute',
-          inset: -8,
+          inset: -5,
           borderRadius: '50%',
           background: `radial-gradient(circle, ${YELLOW_GLOW} 0%, transparent 65%)`,
           animation: 'pulse 2.5s ease-in-out infinite',

@@ -4,24 +4,24 @@ import { DS } from './components/design-system';
 import { ModelPicker } from './components/ModelPicker';
 import { WaveformDisplay } from './components/WaveformDisplay';
 
-// ── Duck logo (header + chat avatar) ─────────────────────────────────────────
+// ── Huncho logo (crown mark — header + chat avatar) ──────────────────────────
 const DuckLogo: React.FC<{ size?: number }> = ({ size = 30 }) => (
   <svg width={size} height={size} viewBox="0 0 44 44" style={{ display: 'block', flexShrink: 0 }}>
-    <circle cx="22" cy="22" r="21" fill="#111" stroke="#222" strokeWidth="1"/>
-    <circle cx="22" cy="23" r="15.5" fill="#F5C518"/>
-    <ellipse cx="22" cy="8.5" rx="3" ry="4.5" fill="#D4A800"/>
-    <ellipse cx="20.5" cy="7.5" rx="1.5" ry="2.5" fill="#fff" opacity="0.25"/>
-    <circle cx="15" cy="22" r="5.8" fill="none" stroke="#111" strokeWidth="2.5"/>
-    <circle cx="29" cy="22" r="5.8" fill="none" stroke="#111" strokeWidth="2.5"/>
-    <line x1="20.8" y1="22" x2="23.2" y2="22" stroke="#111" strokeWidth="2"/>
-    <line x1="9.2" y1="20" x2="9.5" y2="22" stroke="#111" strokeWidth="2" strokeLinecap="round"/>
-    <line x1="34.8" y1="20" x2="34.5" y2="22" stroke="#111" strokeWidth="2" strokeLinecap="round"/>
-    <circle cx="15" cy="22" r="2.8" fill="#111"/>
-    <circle cx="29" cy="22" r="2.8" fill="#111"/>
-    <circle cx="16.2" cy="20.8" r="1.2" fill="white"/>
-    <circle cx="30.2" cy="20.8" r="1.2" fill="white"/>
-    <ellipse cx="22" cy="32.5" rx="6" ry="3" fill="#8B4500"/>
-    <ellipse cx="22" cy="31" rx="6" ry="2.8" fill="#C06800"/>
+    <defs>
+      <linearGradient id="huncho-logo-gold" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#F2D17A" />
+        <stop offset="55%" stopColor="#C9A24B" />
+        <stop offset="100%" stopColor="#8C6A2A" />
+      </linearGradient>
+    </defs>
+    {/* Huncho crown: three peaks with a tall center diamond */}
+    <path d="M5 31 L12 13 L19 22 L22 7 L25 22 L32 13 L39 31 Z"
+          fill="url(#huncho-logo-gold)" stroke="#3A2A0E" strokeWidth="1" strokeLinejoin="round" />
+    {/* base band */}
+    <path d="M7 31 L37 31 L35 37 L9 37 Z"
+          fill="url(#huncho-logo-gold)" stroke="#3A2A0E" strokeWidth="1" strokeLinejoin="round" />
+    {/* center ridge highlight */}
+    <path d="M22 9 L22 36" stroke="#FFF2C8" strokeWidth="0.8" opacity="0.8" />
   </svg>
 );
 
@@ -346,7 +346,7 @@ export const App: React.FC = () => {
             onClick={() => window.electronAPI.minimizePanel()}
             onMouseEnter={() => setMinHover(true)}
             onMouseLeave={() => setMinHover(false)}
-            title="Minimize panel (duck stays active)"
+            title="Minimize panel (Huncho stays active)"
             style={{
               width: '26px', height: '26px', borderRadius: DS.borderRadius.sm,
               border: `1px solid ${minHover ? DS.colors.accent + '88' : DS.colors.border}`,
@@ -365,7 +365,7 @@ export const App: React.FC = () => {
             onClick={() => window.electronAPI.hidePanel()}
             onMouseEnter={() => setQuitHover(true)}
             onMouseLeave={() => setQuitHover(false)}
-            title="Close panel and duck"
+            title="Close panel and Huncho"
             style={{
               width: '26px', height: '26px', borderRadius: DS.borderRadius.sm,
               border: `1px solid ${quitHover ? DS.colors.error + '88' : DS.colors.border}`,
