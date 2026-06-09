@@ -3,27 +3,36 @@ import { VoiceState, StoredMessage } from '../../shared/ipc-types';
 import { DS } from './components/design-system';
 import { ModelPicker } from './components/ModelPicker';
 import { WaveformDisplay } from './components/WaveformDisplay';
+// @ts-ignore — vite handles PNG imports as URL strings
+import hunchoLogoUrl from '../../../assets/branding/huncho-main-logo.png';
 
-// ── Huncho logo (crown mark — header + chat avatar) ──────────────────────────
-const DuckLogo: React.FC<{ size?: number }> = ({ size = 30 }) => (
-  <svg width={size} height={size} viewBox="0 0 44 44" style={{ display: 'block', flexShrink: 0 }}>
-    <defs>
-      <linearGradient id="huncho-logo-gold" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor="#F2D17A" />
-        <stop offset="55%" stopColor="#C9A24B" />
-        <stop offset="100%" stopColor="#8C6A2A" />
-      </linearGradient>
-    </defs>
-    {/* Huncho crown: three peaks with a tall center diamond */}
-    <path d="M5 31 L12 13 L19 22 L22 7 L25 22 L32 13 L39 31 Z"
-          fill="url(#huncho-logo-gold)" stroke="#3A2A0E" strokeWidth="1" strokeLinejoin="round" />
-    {/* base band */}
-    <path d="M7 31 L37 31 L35 37 L9 37 Z"
-          fill="url(#huncho-logo-gold)" stroke="#3A2A0E" strokeWidth="1" strokeLinejoin="round" />
-    {/* center ridge highlight */}
-    <path d="M22 9 L22 36" stroke="#FFF2C8" strokeWidth="0.8" opacity="0.8" />
-  </svg>
-);
+// ── Huncho logo (crown mark + wordmark) ──────────────────────────────────────
+// Uses the real HunchoMainLogo.png from assets/branding/.
+//   mode='mark' (default): crops to the top portion so only the crown shows.
+//     Use for small spots next to the "Huncho" text (header, chat avatars) so
+//     the baked-in wordmark doesn't read as duplicate "Huncho Huncho".
+//   mode='full': shows the entire image (crown + wordmark). Use for the big
+//     empty-state hero where the wordmark looks intentional.
+const DuckLogo: React.FC<{ size?: number; mode?: 'mark' | 'full' }> = ({ size = 30, mode = 'mark' }) => {
+  // The crown occupies roughly the top 72% of the source image; the wordmark is below.
+  const CROWN_RATIO = 0.72;
+  const isFull = mode === 'full';
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        flexShrink: 0,
+        backgroundImage: `url(${hunchoLogoUrl})`,
+        backgroundRepeat: 'no-repeat',
+        backgroundSize: isFull ? 'contain' : `${size}px ${Math.round(size / CROWN_RATIO)}px`,
+        backgroundPosition: isFull ? 'center' : 'top center',
+      }}
+      aria-label="Huncho"
+      role="img"
+    />
+  );
+};
 
 // ── Typing dots ───────────────────────────────────────────────────────────────
 const TypingDots: React.FC = () => (
@@ -399,7 +408,7 @@ export const App: React.FC = () => {
             color: DS.colors.textMuted, fontSize: '12px', textAlign: 'center',
             padding: '40px 20px',
           }}>
-            <DuckLogo size={44} />
+            <DuckLogo size={88} mode="full" />
             <div style={{ marginTop: '8px', lineHeight: 1.6 }}>
               Hold <span style={{
                 backgroundColor: DS.colors.surface2,
