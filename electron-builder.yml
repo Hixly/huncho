@@ -1,0 +1,24 @@
+appId: com.huncho.app
+productName: Huncho
+directories:
+  buildResources: assets
+  output: release
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: assets/icon.ico
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: false
+  createStartMenuShortcut: true
+files:
+  - dist/**/*
+  - assets/**/*
+  - package.json
+extraResources:
+  - from: assets/
+    to: assets/
+    filter:
+      - "**/*"
