@@ -27,6 +27,10 @@ const DuckLogo: React.FC<{ size?: number; mode?: 'mark' | 'full' }> = ({ size = 
         backgroundRepeat: 'no-repeat',
         backgroundSize: isFull ? 'contain' : `${size}px ${Math.round(size / CROWN_RATIO)}px`,
         backgroundPosition: isFull ? 'center' : 'top center',
+        // The source PNG has a solid near-black background baked in. `lighten`
+        // shows whichever pixel is brighter (panel bg vs logo), so the black
+        // square becomes invisible over the dark panel while the gold stays gold.
+        mixBlendMode: 'lighten' as any,
       }}
       aria-label="Huncho"
       role="img"
@@ -90,7 +94,7 @@ const UserBubble: React.FC<{ text: string; timestamp?: number; pending?: boolean
 
 const HunchoBubble: React.FC<{ text: string; timestamp?: number; streaming?: boolean }> = ({ text, timestamp, streaming }) => (
   <div style={{ display: 'flex', alignItems: 'flex-end', gap: '7px' }}>
-    <DuckLogo size={24} />
+    <DuckLogo size={36} />
     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxWidth: '78%' }}>
       <div style={{
         backgroundColor: 'rgba(245,158,11,0.10)',
@@ -122,7 +126,7 @@ const HunchoBubble: React.FC<{ text: string; timestamp?: number; streaming?: boo
 
 const HunchoTyping: React.FC = () => (
   <div style={{ display: 'flex', alignItems: 'flex-end', gap: '7px' }}>
-    <DuckLogo size={24} />
+    <DuckLogo size={36} />
     <div style={{
       backgroundColor: 'rgba(245,158,11,0.10)',
       border: '1px solid rgba(245,158,11,0.22)',
@@ -307,7 +311,7 @@ export const App: React.FC = () => {
         cursor: 'grab',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
-          <DuckLogo size={30} />
+          <DuckLogo size={44} />
           <div>
             <div style={{ fontSize: '15px', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
               Huncho
