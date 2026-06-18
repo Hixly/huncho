@@ -8,7 +8,7 @@ interface StatusDisplayProps {
 
 const statusConfig: Record<VoiceState, { text: string; color: string }> = {
   idle: {
-    text: 'Press Alt+D',
+    text: 'Press Ctrl+H',
     color: DS.colors.textMuted,
   },
   listening: {

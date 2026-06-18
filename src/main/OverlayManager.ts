@@ -78,6 +78,30 @@ export class OverlayManager {
     }
   }
 
+  /**
+   * Re-assert the overlay's always-on-top status. On Windows, the OS can
+   * re-stack windows when another (full-screen) window takes focus — e.g.
+   * after a browser navigation — pushing this transparent overlay BELOW
+   * the browser surface. The diamond mascot then disappears from view.
+   * Call this whenever a focus-stealing action might have just happened.
+   */
+  bringToFront(): void {
+    for (const win of this.overlayWindows.values()) {
+      if (win.isDestroyed() || !win.isVisible()) continue;
+      try {
+        // Re-assert the highest practical always-on-top level, then moveTop()
+        // to put us above siblings. We deliberately DON'T toggle off-then-on
+        // or call showInactive() on a hot path — both create a brief frame
+        // where the overlay can flicker/drop. Re-setting the level + moveTop
+        // is idempotent and cheap enough to run many times per second.
+        win.setAlwaysOnTop(true, 'screen-saver');
+        win.moveTop();
+      } catch {
+        /* non-fatal */
+      }
+    }
+  }
+
   hideAll(): void {
     this.visible = false;
     for (const win of this.overlayWindows.values()) {

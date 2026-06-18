@@ -12,6 +12,7 @@ export class TrayManager {
   private hasPositioned = false;
   private offScreenForRecording = false;
   private overlayManager: OverlayManager | null = null;
+  private mainWindow: { show(): void; hide(): void; getWindow(): import('electron').BaseWindow | null } | null = null;
 
   constructor(panelHtmlPath: string, panelWidth: number, panelHeight: number) {
     this.panelHtmlPath = panelHtmlPath;
@@ -21,6 +22,10 @@ export class TrayManager {
 
   setOverlayManager(om: OverlayManager): void {
     this.overlayManager = om;
+  }
+
+  setMainWindow(mw: { show(): void; hide(): void; getWindow(): import('electron').BaseWindow | null }): void {
+    this.mainWindow = mw;
   }
 
   create(): void {
@@ -39,7 +44,7 @@ export class TrayManager {
     }
 
     this.tray = new Tray(icon);
-    this.tray.setToolTip('Huncho — Your Windows AI Companion\nAlt+D to speak');
+    this.tray.setToolTip('Huncho — Your Windows AI Companion\nCtrl+H to speak');
 
     this.tray.on('click', () => this.togglePanel());
     this.tray.on('double-click', () => this.togglePanel());
@@ -64,7 +69,7 @@ export class TrayManager {
       frame: false,
       transparent: true,
       alwaysOnTop: true,
-      skipTaskbar: true,
+      skipTaskbar: false,
       resizable: false,
       movable: true,
       show: false,
@@ -97,6 +102,14 @@ export class TrayManager {
     this.panelWindow.on('close', (e) => {
       e.preventDefault();
       this.panelWindow?.hide();
+    });
+
+    // When restored from the taskbar, re-assert always-on-top + focus so the
+    // frameless/transparent panel comes back cleanly above other windows.
+    this.panelWindow.on('restore', () => {
+      if (!this.panelWindow || this.panelWindow.isDestroyed()) return;
+      this.panelWindow.setAlwaysOnTop(true);
+      this.panelWindow.focus();
     });
 
     // On app quit: remove the close guard so the window can actually close
@@ -151,9 +164,9 @@ export class TrayManager {
 
   showPanel(): void {
     if (!this.panelWindow) return;
-    // Always reposition above tray on show — guarantees the header is always on-screen
     this.positionPanelAboveTray();
     this.hasPositioned = true;
+    this.mainWindow?.show();
     this.panelWindow.show();
     this.panelWindow.focus();
     this.overlayManager?.showAll();
@@ -162,12 +175,16 @@ export class TrayManager {
   hidePanel(): void {
     if (!this.panelWindow) return;
     this.panelWindow.hide();
+    this.mainWindow?.hide();
     this.overlayManager?.hideAll();
   }
 
   minimizePanel(): void {
     if (!this.panelWindow) return;
-    this.panelWindow.hide();
+    // Use minimize() (not hide()) so the panel keeps a Windows taskbar button
+    // and can be restored with a click. hide() removes it from the taskbar
+    // entirely, leaving the tray icon as the only way back.
+    this.panelWindow.minimize();
     // Duck stays visible — overlay not hidden
   }
 

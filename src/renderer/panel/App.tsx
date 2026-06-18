@@ -17,20 +17,25 @@ const DuckLogo: React.FC<{ size?: number; mode?: 'mark' | 'full' }> = ({ size = 
   // The crown occupies roughly the top 72% of the source image; the wordmark is below.
   const CROWN_RATIO = 0.72;
   const isFull = mode === 'full';
+  // For the small "mark" form, render the logo as a chrome-bg disc so the PNG's
+  // baked-in black background blends in and the gold crown reads cleanly.
   return (
     <div
       style={{
         width: size,
         height: size,
         flexShrink: 0,
+        backgroundColor: isFull ? 'transparent' : '#2a2a34',
         backgroundImage: `url(${hunchoLogoUrl})`,
         backgroundRepeat: 'no-repeat',
         backgroundSize: isFull ? 'contain' : `${size}px ${Math.round(size / CROWN_RATIO)}px`,
         backgroundPosition: isFull ? 'center' : 'top center',
-        // The source PNG has a solid near-black background baked in. `lighten`
-        // shows whichever pixel is brighter (panel bg vs logo), so the black
-        // square becomes invisible over the dark panel while the gold stays gold.
-        mixBlendMode: 'lighten' as any,
+        borderRadius: isFull ? 0 : '50%',
+        border: isFull ? 'none' : '1px solid #d8d8d0',
+        boxShadow: isFull ? 'none' : '0 1px 4px rgba(0,0,0,0.10)',
+        // `lighten` on the chrome disc lets gold pixels show; `multiply` on the
+        // full hero lets the wordmark read against the off-white canvas.
+        mixBlendMode: (isFull ? 'multiply' : 'lighten') as any,
       }}
       aria-label="Huncho"
       role="img"
@@ -73,14 +78,14 @@ const UserBubble: React.FC<{ text: string; timestamp?: number; pending?: boolean
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' }}>
     <div style={{
       maxWidth: '78%',
-      backgroundColor: '#3a3a3c',
+      background: DS.colors.chromeGradient,
       color: '#ffffff',
       borderRadius: '18px 18px 4px 18px',
       padding: '9px 13px',
       fontSize: '13px',
       lineHeight: '1.45',
       opacity: pending ? 0.7 : 1,
-      boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
     }}>
       {text}
     </div>
@@ -97,14 +102,14 @@ const HunchoBubble: React.FC<{ text: string; timestamp?: number; streaming?: boo
     <DuckLogo size={36} />
     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxWidth: '78%' }}>
       <div style={{
-        backgroundColor: 'rgba(245,158,11,0.10)',
-        border: '1px solid rgba(245,158,11,0.22)',
-        color: '#d8d8d8',
+        backgroundColor: DS.colors.surface3,
+        border: `1px solid ${DS.colors.border}`,
+        color: DS.colors.textPrimary,
         borderRadius: '18px 18px 18px 4px',
         padding: '9px 13px',
         fontSize: '13px',
         lineHeight: '1.5',
-        boxShadow: `0 1px 8px rgba(245,158,11,0.08)`,
+        boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
       }}>
         {text}
         {streaming && (
@@ -128,8 +133,8 @@ const HunchoTyping: React.FC = () => (
   <div style={{ display: 'flex', alignItems: 'flex-end', gap: '7px' }}>
     <DuckLogo size={36} />
     <div style={{
-      backgroundColor: 'rgba(245,158,11,0.10)',
-      border: '1px solid rgba(245,158,11,0.22)',
+      backgroundColor: DS.colors.surface3,
+      border: `1px solid ${DS.colors.border}`,
       borderRadius: '18px 18px 18px 4px',
       padding: '10px 14px',
     }}>
@@ -158,6 +163,7 @@ export const App: React.FC = () => {
   const [streamText, setStreamText] = useState('');
   const [audioLevel, setAudioLevel] = useState(0);
   const [currentModel, setCurrentModel] = useState('claude-sonnet-4-5');
+  const [briefMode, setBriefMode] = useState(false);
   const [quitHover, setQuitHover] = useState(false);
   const [minHover, setMinHover] = useState(false);
   const [clearHover, setClearHover] = useState(false);
@@ -226,7 +232,11 @@ export const App: React.FC = () => {
         setPendingUser('');
         setStreamText('');
       }),
-    ];
+
+      (api as any).onBriefModeChanged?.(({ briefMode: bm }: { briefMode: boolean }) => {
+        setBriefMode(bm);
+      }),
+    ].filter(Boolean);
 
     return () => cleanups.forEach(fn => fn());
   }, []);
@@ -280,19 +290,19 @@ export const App: React.FC = () => {
     <div style={{
       width: '100%',
       height: '100%',
-      backgroundColor: '#0e0e0e',
+      backgroundColor: DS.colors.background,
       color: DS.colors.textPrimary,
       fontFamily: DS.typography.fontFamily,
       borderRadius: '16px',
-      border: '1px solid rgba(245,158,11,0.28)',
+      border: `1px solid ${DS.colors.border}`,
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
       boxShadow: [
-        '0 0 0 1px rgba(0,0,0,0.8)',
-        '0 0 30px rgba(245,158,11,0.07)',
-        '0 32px 80px rgba(0,0,0,0.95)',
-        'inset 0 1px 0 rgba(245,158,11,0.12)',
+        '0 0 0 1px rgba(0,0,0,0.04)',
+        '0 0 20px rgba(0,0,0,0.06)',
+        '0 32px 80px rgba(0,0,0,0.18)',
+        'inset 0 1px 0 rgba(255,255,255,0.6)',
       ].join(', '),
       userSelect: 'none',
     }}>
@@ -300,13 +310,13 @@ export const App: React.FC = () => {
       {/* ── Header — this is the drag handle ── */}
       <div style={{
         padding: '11px 14px',
-        borderBottom: '1px solid rgba(245,158,11,0.15)',
-        borderTop: '2px solid rgba(245,158,11,0.55)',
+        borderBottom: `1px solid ${DS.colors.borderLight}`,
+        borderTop: `2px solid ${DS.colors.accent}`,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexShrink: 0,
-        background: 'linear-gradient(180deg, #1a1610 0%, #111111 100%)',
+        background: `linear-gradient(180deg, ${DS.colors.surface3} 0%, ${DS.colors.background} 100%)`,
         WebkitAppRegion: 'drag' as any,
         cursor: 'grab',
       }}>
@@ -419,7 +429,7 @@ export const App: React.FC = () => {
                 border: `1px solid ${DS.colors.border}`,
                 borderRadius: '4px', padding: '1px 6px',
                 fontFamily: 'monospace', fontSize: '11px', color: DS.colors.textSecondary,
-              }}>Alt+D</span> to talk to Huncho
+              }}>Ctrl+H</span> to talk to Huncho
             </div>
           </div>
         )}
@@ -445,17 +455,37 @@ export const App: React.FC = () => {
         <div ref={bottomRef} />
       </div>
 
-      {/* ── Footer: model picker only ── */}
+      {/* ── Footer: model picker + brief mode toggle ── */}
       <div style={{
         padding: '7px 14px',
-        borderTop: '1px solid rgba(245,158,11,0.15)',
+        borderTop: `1px solid ${DS.colors.borderLight}`,
         display: 'flex', alignItems: 'center', gap: '8px',
         flexShrink: 0,
         WebkitAppRegion: 'no-drag' as any,
-        background: 'linear-gradient(0deg, #1a1610 0%, #111111 100%)',
+        background: `linear-gradient(0deg, ${DS.colors.surface3} 0%, ${DS.colors.background} 100%)`,
       }}>
         <span style={{ fontSize: '11px', color: DS.colors.textMuted }}>Model</span>
         <ModelPicker currentModel={currentModel} onModelChange={handleModelChange} />
+        <div style={{ flex: 1 }} />
+        <button
+          onClick={() => (window.electronAPI as any).toggleBriefMode?.()}
+          title={briefMode ? 'Brief mode ON — click to go back to full responses' : 'Click to enable brief mode (1-2 sentence answers)'}
+          style={{
+            padding: '3px 9px',
+            borderRadius: DS.borderRadius.full,
+            border: `1px solid ${briefMode ? DS.colors.accent : DS.colors.border}`,
+            backgroundColor: briefMode ? DS.colors.accentDim : 'transparent',
+            color: briefMode ? DS.colors.accent : DS.colors.textMuted,
+            fontSize: '10px', fontWeight: briefMode ? 700 : 400,
+            letterSpacing: '0.04em',
+            cursor: 'pointer',
+            fontFamily: DS.typography.fontFamily,
+            transition: 'all 0.15s ease',
+            flexShrink: 0,
+          }}
+        >
+          {briefMode ? 'BRIEF ✓' : 'Brief'}
+        </button>
       </div>
 
       <style>{`

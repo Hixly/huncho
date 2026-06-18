@@ -41,27 +41,43 @@ function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
-// Huncho diamond mascot — glowing gold elongated diamond (center shape of the Huncho crown logo)
+// Huncho diamond mascot — polished chrome elongated diamond. Sized big enough
+// (22×36 device px) and rimmed in dark stroke + dual glow so it never gets lost,
+// whether the cursor is over white or a busy photo. Matches the Hixly chrome theme.
 const DuckIcon: React.FC = () => (
-  <svg width="14" height="22" viewBox="0 0 24 40" style={{ display: 'block', filter: 'url(#huncho-glow)' }}>
+  <svg width="12" height="20" viewBox="0 0 24 40" style={{ display: 'block', filter: 'url(#huncho-glow)' }}>
     <defs>
-      <linearGradient id="huncho-gold" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor="#F2D17A" />
-        <stop offset="55%" stopColor="#C9A24B" />
-        <stop offset="100%" stopColor="#8C6A2A" />
+      {/* Polished chrome gradient — bright top, deep mid, silver bottom */}
+      <linearGradient id="huncho-chrome" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%"  stopColor="#ffffff" />
+        <stop offset="22%" stopColor="#e6e6e6" />
+        <stop offset="48%" stopColor="#2a2a34" />
+        <stop offset="62%" stopColor="#5a5a64" />
+        <stop offset="85%" stopColor="#c8c8c0" />
+        <stop offset="100%" stopColor="#7a7a74" />
       </linearGradient>
-      <filter id="huncho-glow" x="-75%" y="-75%" width="250%" height="250%">
-        <feDropShadow dx="0" dy="0" stdDeviation="1.4" floodColor="#F2C45A" floodOpacity="0.95" />
-        <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="#C9A24B" floodOpacity="0.6" />
+      {/* Specular highlight strip down the centerline */}
+      <linearGradient id="huncho-spec" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%"   stopColor="#ffffff" stopOpacity="0" />
+        <stop offset="50%"  stopColor="#ffffff" stopOpacity="0.95" />
+        <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+      </linearGradient>
+      {/* Dual halo — soft white + soft dark, so the diamond pops on any background */}
+      <filter id="huncho-glow" x="-100%" y="-100%" width="300%" height="300%">
+        <feDropShadow dx="0" dy="0" stdDeviation="0.8" floodColor="#000000" floodOpacity="0.55" />
+        <feDropShadow dx="0" dy="0" stdDeviation="2.4" floodColor="#ffffff" floodOpacity="0.55" />
+        <feDropShadow dx="0" dy="1" stdDeviation="1.2" floodColor="#000000" floodOpacity="0.35" />
       </filter>
     </defs>
-    {/* outer elongated diamond (the crown's center peak) */}
+    {/* outer elongated diamond — dark rim for crisp contrast on any background */}
     <path d="M12 1 L19 14 L12 39 L5 14 Z"
-          fill="url(#huncho-gold)" stroke="#3A2A0E" strokeWidth="0.8" strokeLinejoin="round" />
-    {/* center ridge */}
-    <path d="M12 1 L12 39" stroke="#FFF2C8" strokeWidth="0.7" opacity="0.85" />
-    {/* upper facet */}
-    <path d="M5 14 L12 18 L19 14" fill="none" stroke="#FFF2C8" strokeWidth="0.6" opacity="0.6" />
+          fill="url(#huncho-chrome)" stroke="#0a0a0e" strokeWidth="1" strokeLinejoin="round" />
+    {/* mirror-bright centerline */}
+    <path d="M12 1 L12 39" stroke="url(#huncho-spec)" strokeWidth="1.2" opacity="0.95" />
+    {/* upper facet edge */}
+    <path d="M5 14 L12 17 L19 14" fill="none" stroke="#ffffff" strokeWidth="0.7" opacity="0.85" />
+    {/* lower facet edge */}
+    <path d="M5 14 L12 22 L19 14" fill="none" stroke="#1a1a1e" strokeWidth="0.5" opacity="0.5" />
   </svg>
 );
 
@@ -229,6 +245,10 @@ export const OverlayView: React.FC = () => {
           }, 600);
         }
       }),
+
+      (window.electronAPI as any).onDuckVisible?.(({ visible }: { visible: boolean }) => {
+        if (duckElRef.current) duckElRef.current.style.opacity = visible ? '1' : '0';
+      }),
     ];
 
     return () => {
@@ -252,8 +272,10 @@ export const OverlayView: React.FC = () => {
           top: posRef.current.y - DUCK_HALF + DUCK_OFFSET_Y,
           width: DUCK_SIZE,
           height: 22,
-          willChange: 'left, top, transform',
+          willChange: 'left, top, transform, opacity',
           filter: `drop-shadow(0 0 5px ${YELLOW_GLOW}) drop-shadow(0 2px 8px rgba(0,0,0,0.7))`,
+          opacity: 1,
+          transition: 'opacity 0.15s ease',
         }}
       >
         {/* Ambient glow ring */}

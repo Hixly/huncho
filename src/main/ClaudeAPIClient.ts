@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { DUXY_CONFIG } from './config';
 import { NAVIGATE_TOOL } from './tools/navigate-tool';
+import { DOM_TOOLS } from './tools/dom-agent';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -23,6 +24,7 @@ export interface ClaudeRequestOptions {
   conversationHistory: ConversationMessage[];
   model: string;
   windowContext?: { app: string; title: string };
+  briefMode?: boolean;
 }
 
 export interface CursorPointEvent {
@@ -96,13 +98,17 @@ export class ClaudeAPIClient extends EventEmitter {
       },
     ];
 
+    const systemPrompt = options.briefMode
+      ? DUXY_CONFIG.systemPrompt + '\n\nBRIEF MODE: Keep ALL responses to 1-2 sentences maximum. Be direct and concise. No elaboration unless the user specifically asks for it.'
+      : DUXY_CONFIG.systemPrompt;
+
     const requestBody = {
       model: options.model,
       max_tokens: 1024,
       stream: true,
-      system: DUXY_CONFIG.systemPrompt,
+      system: systemPrompt,
       messages,
-      tools: [NAVIGATE_TOOL],
+      tools: [NAVIGATE_TOOL, ...DOM_TOOLS],
     };
 
     this._firedTags.clear(); // reset per-message

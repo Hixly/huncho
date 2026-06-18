@@ -89,6 +89,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onHistoryCleared: (cb: () => void) =>
     onChannelNoPayload(IPC.CLEAR_HISTORY, cb),
 
+  onBriefModeChanged: (cb: (payload: { briefMode: boolean }) => void) =>
+    onChannel<{ briefMode: boolean }>(IPC.BRIEF_MODE_CHANGED, cb),
+
+  onDuckVisible: (cb: (payload: { visible: boolean }) => void) =>
+    onChannel<{ visible: boolean }>(IPC.DUCK_VISIBLE, cb),
+
   // Renderer → Main senders
   sendMicPcmChunk: (payload: MicPcmChunkPayload) =>
     ipcRenderer.send(IPC.MIC_PCM_CHUNK, payload),
@@ -105,6 +111,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   notifyTtsComplete: () => ipcRenderer.send(IPC.TTS_COMPLETE),
   requestChatHistory: () => ipcRenderer.send(IPC.REQUEST_CHAT_HISTORY),
   clearHistory: () => ipcRenderer.send(IPC.CLEAR_HISTORY),
+  toggleBriefMode: () => ipcRenderer.send(IPC.TOGGLE_BRIEF_MODE),
 
   // Utilities
   getDisplayIndex,

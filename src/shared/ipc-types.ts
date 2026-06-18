@@ -30,6 +30,12 @@ export const IPC = {
   // Browser navigation
   BROWSER_NAVIGATE: 'DUXY_BROWSER_NAVIGATE',
   BROWSER_DID_NAVIGATE: 'DUXY_BROWSER_DID_NAVIGATE',
+  // Brief mode toggle
+  TOGGLE_BRIEF_MODE: 'DUXY_TOGGLE_BRIEF_MODE',
+  BRIEF_MODE_CHANGED: 'DUXY_BRIEF_MODE_CHANGED',
+  // Hide/show the desktop overlay duck while the cursor is over the browser
+  // (the browser uses its own in-page diamond, so the desktop one would dup).
+  DUCK_VISIBLE: 'DUXY_DUCK_VISIBLE',
 } as const;
 
 export type VoiceState = 'idle' | 'listening' | 'processing' | 'responding';

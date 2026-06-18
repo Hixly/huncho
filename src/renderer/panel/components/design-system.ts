@@ -1,33 +1,35 @@
-// Huncho Design System — Golden Duck Yellow Theme
+// Huncho Design System — Chrome / Off-White Theme (matches Hixly Research V3)
 export const DS = {
   colors: {
-    // Backgrounds (layered elevation)
-    background: '#0c0c0c',
-    surface1: '#131313',
-    surface2: '#1a1a1a',
-    surface3: '#222222',
+    // Backgrounds (layered elevation, light)
+    background: '#f4f3ee',     // panel canvas (Hixly bg-primary)
+    surface1: '#eae9e4',       // sunken (Hixly bg-secondary)
+    surface2: '#edecea',       // elevated (Hixly bg-elevated)
+    surface3: '#ffffff',       // floating cards / bubbles (Hixly bg-panel)
     // Legacy alias
-    surface: '#1a1a1a',
-    surfaceHover: '#2a2a2a',
+    surface: '#eae9e4',
+    surfaceHover: '#f0efea',
 
     // Borders
-    border: '#2a2a2a',
-    borderLight: '#333333',
+    border: '#d8d8d0',
+    borderLight: '#e4e4dc',
 
     // Text
-    textPrimary: '#ffffff',
-    textSecondary: '#a0a0a0',
-    textMuted: '#5a5a5a',
+    textPrimary: '#1a1a1e',
+    textSecondary: '#3a3a3e',
+    textMuted: '#8a8a80',
 
-    // Accent — Duck Yellow / Amber
-    accent: '#F59E0B',
-    accentGlow: '#D97706',
-    accentLight: '#FBBF24',
-    accentDim: 'rgba(245, 158, 11, 0.15)',
+    // Accent — Chrome (replaces duck-yellow)
+    accent: '#3a3a3e',                            // chrome
+    accentGlow: '#1a1a1e',                        // chrome-bright
+    accentLight: '#7a7a74',                       // chrome-dim
+    accentDim: 'rgba(58, 58, 62, 0.10)',
+    // Chrome gradient — for highlight strokes / hero accents
+    chromeGradient: 'linear-gradient(135deg, #4a4a54 0%, #2a2a34 40%, #5a5a64 60%, #3a3a44 100%)',
 
     // Status
     success: '#22c55e',
-    warning: '#F59E0B',
+    warning: '#f59e0b',
     error: '#ef4444',
     info: '#3b82f6',
   },
@@ -47,7 +49,7 @@ export const DS = {
     xxl: '32px',
   },
   typography: {
-    fontFamily: `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`,
+    fontFamily: `'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`,
     sizes: {
       xs: '11px',
       sm: '12px',
@@ -66,4 +68,3 @@ export const DS = {
 };
 
 export type DesignSystem = typeof DS;
-

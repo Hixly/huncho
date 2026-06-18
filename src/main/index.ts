@@ -85,6 +85,7 @@ app.whenReady().then(async () => {
 
   // Initialize UI
   trayManager.create();
+  trayManager.setMainWindow(mainWindow);
   overlayManager.createOverlays();
 
   // Initialize companion (connects to services)
@@ -100,10 +101,22 @@ app.whenReady().then(async () => {
     mainWindow?.getUrlbarWebContents()?.send(IPC.BROWSER_DID_NAVIGATE, { url });
   });
 
+  // Belt-and-suspenders: also catch Ctrl+H via before-input-event on the urlbar webContents.
+  // The urlbar is a WebContentsView; when it has focus, Chromium can intercept the
+  // keystroke before the OS globalShortcut fires.
+  const urlbarWc = mainWindow.getUrlbarWebContents();
+  if (urlbarWc) {
+    urlbarWc.on('before-input-event', (_event, input) => {
+      if (input.type === 'keyDown' && input.control && !input.alt && !input.shift && !input.meta && input.key.toLowerCase() === 'h') {
+        hotkeyMonitor!.handleHotkey();
+      }
+    });
+  }
+
   // Start global hotkey monitor
   hotkeyMonitor.start();
 
-  console.log('[Huncho] Ready — press Alt+D to talk (toggle: tap to start, tap to stop)');
+  console.log('[Huncho] Ready — press Ctrl+H to talk (toggle: tap to start, tap to stop)');
 
   // Show the panel + overlay on launch so Huncho is visible immediately
   // (otherwise it's a tray-only app and the window stays hidden until the tray icon is clicked)

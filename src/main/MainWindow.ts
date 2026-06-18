@@ -22,7 +22,7 @@ export class MainWindow {
     this.window = new BaseWindow({
       x, y, width, height,
       frame: false,
-      backgroundColor: '#0B0B0D',
+      backgroundColor: '#f4f3ee',
       show: true,
       title: 'Huncho',
     });
@@ -56,9 +56,8 @@ export class MainWindow {
 
     this.window.on('resize', () => this.layoutChildren());
     this.window.on('close', (e) => {
-      // Don't actually close — Huncho is a long-running tray app. Hide instead.
       e.preventDefault();
-      this.window?.hide();
+      this.window?.minimize();
     });
     app.on('before-quit', () => {
       this.window?.removeAllListeners('close');
