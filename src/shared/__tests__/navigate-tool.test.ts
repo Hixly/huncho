@@ -28,6 +28,10 @@ describe('normalizeNavigateUrl', () => {
   it('trims whitespace', () => {
     expect(normalizeNavigateUrl('  youtube.com  ')).toBe('https://youtube.com');
   });
+  it('extracts a domain from natural-language navigate requests', () => {
+    expect(normalizeNavigateUrl('Go to PittsburghSteelers.com.')).toBe('https://pittsburghsteelers.com');
+    expect(normalizeNavigateUrl('visit www.google.com')).toBe('https://www.google.com');
+  });
   it('rejects javascript: and file: urls (returns null)', () => {
     expect(normalizeNavigateUrl('javascript:alert(1)')).toBeNull();
     expect(normalizeNavigateUrl('file:///etc/passwd')).toBeNull();

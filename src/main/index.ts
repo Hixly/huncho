@@ -95,7 +95,9 @@ app.whenReady().then(async () => {
   // Bridge: urlbar form submit -> BrowserSurface.navigate -> urlbar address update
   const browser = mainWindow.getBrowserSurface();
   ipcMain.on(IPC.BROWSER_NAVIGATE, (_e, payload: { url: string }) => {
-    browser?.navigate(payload.url);
+    browser?.navigate(payload.url).catch((err) => {
+      console.warn('[Main] urlbar navigate failed:', err);
+    });
   });
   browser?.on('didNavigate', ({ url }: { url: string }) => {
     mainWindow?.getUrlbarWebContents()?.send(IPC.BROWSER_DID_NAVIGATE, { url });
@@ -106,8 +108,19 @@ app.whenReady().then(async () => {
   // keystroke before the OS globalShortcut fires.
   const urlbarWc = mainWindow.getUrlbarWebContents();
   if (urlbarWc) {
-    urlbarWc.on('before-input-event', (_event, input) => {
+    urlbarWc.on('before-input-event', (event, input) => {
       if (input.type === 'keyDown' && input.control && !input.alt && !input.shift && !input.meta && input.key.toLowerCase() === 'h') {
+        event.preventDefault();
+        hotkeyMonitor!.handleHotkey();
+      }
+    });
+  }
+
+  const panelWin = trayManager.getPanelWindow();
+  if (panelWin && !panelWin.isDestroyed()) {
+    panelWin.webContents.on('before-input-event', (event, input) => {
+      if (input.type === 'keyDown' && input.control && !input.alt && !input.shift && !input.meta && input.key.toLowerCase() === 'h') {
+        event.preventDefault();
         hotkeyMonitor!.handleHotkey();
       }
     });

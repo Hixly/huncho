@@ -52,6 +52,171 @@ export const DOM_AGENT_SCRIPT = `
 
   let badgesVisible = false;
   const CURSOR_ID = 'huncho-agent-cursor';
+  const CURSOR_OFFSET_X = 22;
+  const CURSOR_OFFSET_Y = 14;
+  const CURSOR_FOLLOW_SPEED = 0.018;
+
+  // Shared cursor state survives DOM reinstalls (Google wiping our node, etc.)
+  const CURSOR_STATE = {
+    target: { x: 0, y: 0 },
+    current: { x: 0, y: 0 },
+    isOverPage: false,
+    forcedHidden: true,
+    loopStarted: false,
+  };
+  const VOICE_UI = { state: 'idle', level: 0, phase: 0 };
+  const VOICE_BAR_CLASS = 'huncho-voice-bar';
+  const VOICE_DOT_CLASS = 'huncho-voice-dot';
+  const VOICE_SPINNER_CLASS = 'huncho-voice-spinner';
+  const LABEL_ID = 'huncho-agent-cursor-label';
+  const FLY_STATE = { mode: 'follow', progress: 1, startX: 0, startY: 0, endX: 0, endY: 0, label: '' };
+
+  function flyEase(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
+
+  function updatePointLabel(text) {
+    const wrap = document.getElementById(CURSOR_ID);
+    if (!wrap) return;
+    let el = document.getElementById(LABEL_ID);
+    if (!text) {
+      if (el) el.remove();
+      return;
+    }
+    if (!el) {
+      el = document.createElement('div');
+      el.id = LABEL_ID;
+      el.style.cssText = 'position:absolute;top:26px;left:50%;transform:translateX(-50%);white-space:nowrap;background:rgba(0,0,0,0.9);color:#fff;font:600 11px/1.4 ui-sans-serif,sans-serif;padding:4px 10px;border-radius:6px;border:1px solid rgba(200,200,192,0.45);pointer-events:none;';
+      wrap.appendChild(el);
+    }
+    el.textContent = text;
+  }
+
+  function flyToPoint(x, y, label) {
+    installCursor();
+    numberAll();
+
+    // Prefer the live element map over Claude's screenshot guess — adjacent
+    // buttons (Google Search vs I'm Feeling Lucky) are easy to confuse in pixels.
+    const matched = label ? findElementByLabel(label) : null;
+    if (matched && matched.bbox) {
+      x = matched.bbox.x + Math.round(matched.bbox.w / 2);
+      y = matched.bbox.y + Math.round(matched.bbox.h / 2);
+    }
+
+    FLY_STATE.mode = 'flying';
+    FLY_STATE.progress = 0;
+    FLY_STATE.startX = CURSOR_STATE.current.x;
+    FLY_STATE.startY = CURSOR_STATE.current.y;
+    // Land ON the target — do not apply mouse-follow stagger offset here.
+    FLY_STATE.endX = x;
+    FLY_STATE.endY = y;
+    FLY_STATE.label = label || '';
+    CURSOR_STATE.isOverPage = true;
+    updatePointLabel('');
+    return { ok: true, snapped: !!matched, x, y };
+  }
+
+  function normalizeLabel(s) {
+    return (s || '').toLowerCase().replace(/['"]/g, '').replace(/\\s+/g, ' ').trim();
+  }
+
+  function tokenizeLabel(s) {
+    return normalizeLabel(s).split(' ').filter((w) => w.length > 2);
+  }
+
+  function findElementByLabel(label) {
+    const q = normalizeLabel(label);
+    if (!q) return null;
+    const qw = tokenizeLabel(label);
+    if (qw.length === 0) return null;
+    let best = null;
+    let bestScore = 0;
+    for (const e of lastMap) {
+      const t = normalizeLabel(e.text);
+      if (!t) continue;
+      const tw = tokenizeLabel(e.text);
+      let score = 0;
+      if (t === q) score = 10000;
+      else if (t.includes(q) || q.includes(t)) {
+        score = 800 + Math.min(t.length, q.length);
+      } else {
+        const overlap = qw.filter((w) => tw.some((token) => token.includes(w) || w.includes(token))).length;
+        const ratio = overlap / qw.length;
+        score = overlap * 120 + ratio * 600;
+      }
+      if (score > bestScore) {
+        best = e;
+        bestScore = score;
+      }
+    }
+    return bestScore >= 120 ? best : null;
+  }
+
+  function returnCursorToFollow() {
+    FLY_STATE.mode = 'follow';
+    FLY_STATE.progress = 1;
+    updatePointLabel('');
+    return { ok: true };
+  }
+
+  function seedCursorCenter() {
+    const cx = (window.innerWidth || 800) / 2;
+    const cy = (window.innerHeight || 600) / 2;
+    CURSOR_STATE.target.x = cx + CURSOR_OFFSET_X;
+    CURSOR_STATE.target.y = cy + CURSOR_OFFSET_Y;
+    CURSOR_STATE.current.x = CURSOR_STATE.target.x;
+    CURSOR_STATE.current.y = CURSOR_STATE.target.y;
+  }
+
+  function applyCursorFrame(wrap) {
+    if (FLY_STATE.mode === 'flying') {
+      FLY_STATE.progress = Math.min(1, FLY_STATE.progress + 0.05);
+      const t = flyEase(FLY_STATE.progress);
+      CURSOR_STATE.current.x = FLY_STATE.startX + (FLY_STATE.endX - FLY_STATE.startX) * t;
+      CURSOR_STATE.current.y = FLY_STATE.startY + (FLY_STATE.endY - FLY_STATE.startY) * t;
+      if (FLY_STATE.progress >= 1) {
+        FLY_STATE.mode = 'atTarget';
+        updatePointLabel(FLY_STATE.label);
+      }
+    } else if (FLY_STATE.mode !== 'atTarget') {
+      CURSOR_STATE.current.x += (CURSOR_STATE.target.x - CURSOR_STATE.current.x) * CURSOR_FOLLOW_SPEED;
+      CURSOR_STATE.current.y += (CURSOR_STATE.target.y - CURSOR_STATE.current.y) * CURSOR_FOLLOW_SPEED;
+    }
+    wrap.style.left = CURSOR_STATE.current.x + 'px';
+    wrap.style.top = CURSOR_STATE.current.y + 'px';
+    wrap.style.opacity = (CURSOR_STATE.isOverPage && !CURSOR_STATE.forcedHidden) ? '1' : '0';
+  }
+
+  function updateVoiceUi() {
+    const wrap = document.getElementById(CURSOR_ID);
+    if (!wrap) return;
+    wrap.setAttribute('data-voice', VOICE_UI.state === 'idle' ? '' : VOICE_UI.state);
+    if (VOICE_UI.state !== 'listening') return;
+
+    VOICE_UI.phase += 0.1;
+    const profile = [0.4, 0.7, 1.0, 0.7, 0.4];
+    const bars = wrap.querySelectorAll('.' + VOICE_BAR_CLASS);
+    bars.forEach((bar, i) => {
+      const mic = Math.pow(Math.min(VOICE_UI.level * 2.85, 1), 0.76);
+      const idle = (Math.sin(VOICE_UI.phase + i * 1.2) + 1) / 2 * 2;
+      bar.style.height = Math.round(3 + mic * 14 * profile[i] + idle) + 'px';
+    });
+  }
+
+  function ensureCursorLoop() {
+    if (CURSOR_STATE.loopStarted) return;
+    CURSOR_STATE.loopStarted = true;
+    function tick() {
+      const wrap = document.getElementById(CURSOR_ID);
+      if (wrap) {
+        applyCursorFrame(wrap);
+        updateVoiceUi();
+      }
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
 
   // --- Styles -------------------------------------------------------------
   function installStyles() {
@@ -85,13 +250,76 @@ export const DOM_AGENT_SCRIPT = `
         width: 14px; height: 22px;
         z-index: 2147483647;
         pointer-events: none;
-        /* Center the diamond on (left,top); offset is applied in JS to match
-           the desktop overlay duck's down-right stagger from the cursor tip. */
         transform: translate(-50%, -50%);
         transition: opacity 0.2s ease;
         filter: drop-shadow(0 0 4px rgba(120,120,130,0.55)) drop-shadow(0 0 2px rgba(0,0,0,0.5));
         will-change: top, left;
         opacity: 0;
+      }
+      .huncho-voice-ui {
+        position: absolute;
+        left: 50%;
+        top: -26px;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+      }
+      .huncho-voice-bars {
+        display: none;
+        align-items: center;
+        gap: 3px;
+        height: 18px;
+      }
+      .huncho-voice-dots {
+        display: none;
+        align-items: center;
+        gap: 4px;
+        height: 18px;
+      }
+      .\${VOICE_BAR_CLASS} {
+        width: 3px;
+        height: 4px;
+        border-radius: 2px;
+        background: #22d3ee;
+        box-shadow: 0 0 5px rgba(34, 211, 238, 0.85);
+      }
+      .\${VOICE_DOT_CLASS} {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: #f59e0b;
+        box-shadow: 0 0 6px rgba(245, 158, 11, 0.9);
+        animation: huncho-dot-pulse 1.1s ease-in-out infinite;
+      }
+      .\${VOICE_DOT_CLASS}:nth-child(2) { animation-delay: 0.15s; }
+      .\${VOICE_DOT_CLASS}:nth-child(3) { animation-delay: 0.3s; }
+      .\${VOICE_SPINNER_CLASS} {
+        display: none;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        border: 2px solid transparent;
+        border-top-color: #22d3ee;
+        animation: huncho-spin 0.8s linear infinite;
+      }
+      #\${CURSOR_ID}[data-voice="listening"] .huncho-voice-bars {
+        display: flex;
+      }
+      #\${CURSOR_ID}[data-voice="responding"] .huncho-voice-dots {
+        display: flex;
+      }
+      #\${CURSOR_ID}[data-voice="processing"] .\${VOICE_SPINNER_CLASS} {
+        display: block;
+      }
+      @keyframes huncho-dot-pulse {
+        0%, 100% { opacity: 0.35; transform: scale(0.75); }
+        50% { opacity: 1; transform: scale(1.15); }
+      }
+      @keyframes huncho-spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
       }
     \`;
     (document.head || document.documentElement).appendChild(s);
@@ -108,8 +336,32 @@ export const DOM_AGENT_SCRIPT = `
   }
   function installCursor() {
     if (document.getElementById(CURSOR_ID)) return;
+    seedCursorCenter();
     const wrap = document.createElement('div');
     wrap.id = CURSOR_ID;
+
+    const voiceUi = document.createElement('div');
+    voiceUi.className = 'huncho-voice-ui';
+    const barsWrap = document.createElement('div');
+    barsWrap.className = 'huncho-voice-bars';
+    for (let i = 0; i < 5; i++) {
+      const bar = document.createElement('div');
+      bar.className = VOICE_BAR_CLASS;
+      barsWrap.appendChild(bar);
+    }
+    const dotsWrap = document.createElement('div');
+    dotsWrap.className = 'huncho-voice-dots';
+    for (let i = 0; i < 3; i++) {
+      const dot = document.createElement('div');
+      dot.className = VOICE_DOT_CLASS;
+      dotsWrap.appendChild(dot);
+    }
+    const spinner = document.createElement('div');
+    spinner.className = VOICE_SPINNER_CLASS;
+    voiceUi.appendChild(barsWrap);
+    voiceUi.appendChild(dotsWrap);
+    voiceUi.appendChild(spinner);
+    wrap.appendChild(voiceUi);
 
     const svg = svgEl('svg', { width: '14', height: '22', viewBox: '0 0 24 40' });
     const defs = svgEl('defs', {});
@@ -124,59 +376,33 @@ export const DOM_AGENT_SCRIPT = `
     wrap.appendChild(svg);
     document.documentElement.appendChild(wrap);
 
-    // Target (where the cursor is, with stagger offset) vs current (where the
-    // diamond actually is). The render loop lerps current → target so the
-    // diamond trails behind the cursor — same lazy-follow feel as the
-    // desktop overlay duck.
-    const OFFSET_X = 22;
-    const OFFSET_Y = 14;
-    const FOLLOW_SPEED = 0.018; // Matches the desktop overlay duck — heavy trail
-    const target = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-    const current = { x: target.x, y: target.y };
-    let hasMoved = false;
-    let isOverPage = false;      // boolean state — set via mouseenter / mouseleave
-    let forcedHidden = false;    // set by main process via setCursorOnPage(false)
-
     const move = (e) => {
-      target.x = e.clientX + OFFSET_X;
-      target.y = e.clientY + OFFSET_Y;
-      if (!hasMoved) {
-        hasMoved = true;
-        current.x = target.x;
-        current.y = target.y;
-      }
-      isOverPage = true;
+      CURSOR_STATE.target.x = e.clientX + CURSOR_OFFSET_X;
+      CURSOR_STATE.target.y = e.clientY + CURSOR_OFFSET_Y;
+      CURSOR_STATE.isOverPage = true;
     };
-    const enter = () => { isOverPage = true; };
+    const enter = () => { CURSOR_STATE.isOverPage = true; };
     const leave = (e) => {
-      // Ignore "fake" mouseleave events that fire when the cursor moves to a
-      // child element with relatedTarget === null is the page boundary.
       if (e && e.relatedTarget) return;
-      isOverPage = false;
+      CURSOR_STATE.isOverPage = false;
     };
     window.addEventListener('mousemove', move, { passive: true, capture: true });
     document.documentElement.addEventListener('mouseenter', enter, { passive: true });
     document.documentElement.addEventListener('mouseleave', leave, { passive: true });
-    window.addEventListener('blur', () => { isOverPage = false; });
-    window.addEventListener('focus', () => { if (!document.getElementById(CURSOR_ID)) installCursor(); });
+    window.addEventListener('focus', () => {
+      if (!document.getElementById(CURSOR_ID)) installCursor();
+      CURSOR_STATE.isOverPage = true;
+    });
 
-    // Main process pushes this to forcibly hide while the OS cursor is over
-    // the floating panel — even if the browser's own mouseleave didn't fire.
-    window.__hunchoCursorForceHidden = (v) => { forcedHidden = !!v; };
+    // Main process pushes this when the OS cursor enters / leaves the browser
+    // bounds (e.g. moves over the floating panel). When visible, treat pointer
+    // as on-page even if mousemove hasn't fired since a navigation.
+    window.__hunchoCursorForceHidden = (hidden) => {
+      CURSOR_STATE.forcedHidden = !!hidden;
+      if (!hidden) CURSOR_STATE.isOverPage = true;
+    };
 
-    // Render loop — lerps toward target, opacity is purely based on a boolean
-    // "is the OS cursor over this page" state (NOT idle timing). That way the
-    // diamond stays visible when you stop moving on the page, but hides
-    // instantly when you cross onto the panel or another window.
-    function tick() {
-      current.x += (target.x - current.x) * FOLLOW_SPEED;
-      current.y += (target.y - current.y) * FOLLOW_SPEED;
-      wrap.style.left = current.x + 'px';
-      wrap.style.top = current.y + 'px';
-      wrap.style.opacity = (isOverPage && !forcedHidden && hasMoved) ? '1' : '0';
-      requestAnimationFrame(tick);
-    }
-    requestAnimationFrame(tick);
+    ensureCursorLoop();
   }
 
   function removeBadges() {
@@ -274,9 +500,24 @@ export const DOM_AGENT_SCRIPT = `
     const el = findByNumber(n);
     if (!el) return { ok: false, error: 'no_element_for_number_' + n };
     highlight(el);
-    // Scroll into view first
     el.scrollIntoView({ block: 'center', behavior: 'instant' });
-    // Native click
+    const tag = (el.tagName || '').toLowerCase();
+    const target = (tag === 'a' && el.href) ? el : (el.closest && el.closest('a[href]'));
+    if (target && target.href && !String(target.href).startsWith('javascript:')) {
+      const startHref = location.href;
+      const dest = target.href;
+      target.focus();
+      target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, view: window }));
+      target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, view: window }));
+      target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window, detail: 1 }));
+      // Google SERP and some SPAs ignore synthetic clicks — navigate directly.
+      setTimeout(function () {
+        if (location.href === startHref && dest) {
+          window.location.assign(dest);
+        }
+      }, 80);
+      return { ok: true, n, text: getText(target), href: dest };
+    }
     if (typeof el.click === 'function') {
       el.click();
     } else {
@@ -326,11 +567,40 @@ export const DOM_AGENT_SCRIPT = `
   }
 
   function scrollPage(direction, amount) {
-    const px = typeof amount === 'number' ? amount : Math.max(200, Math.floor(window.innerHeight * 0.7));
-    const map = { up: -px, down: px, top: -1e9, bottom: 1e9 };
-    const dy = map[direction] != null ? map[direction] : px;
-    window.scrollBy({ top: dy, behavior: 'smooth' });
-    return { ok: true, dy };
+    const root = document.scrollingElement || document.documentElement || document.body;
+    const viewport = window.innerHeight || 600;
+    const step = typeof amount === 'number' ? amount : Math.max(240, Math.floor(viewport * 0.72));
+    const startY = root.scrollTop;
+    let endY = startY;
+
+    if (direction === 'down') endY = startY + step;
+    else if (direction === 'up') endY = startY - step;
+    else if (direction === 'top') endY = 0;
+    else if (direction === 'bottom') endY = Math.max(0, root.scrollHeight - viewport);
+    else endY = startY + step;
+
+    const maxY = Math.max(0, root.scrollHeight - viewport);
+    endY = Math.max(0, Math.min(endY, maxY));
+    const delta = endY - startY;
+
+    if (Math.abs(delta) < 2) {
+      return Promise.resolve({ ok: true, dy: 0, scrollY: startY, skipped: true });
+    }
+
+    // Eased animation — ~320–650ms depending on distance (feels like a natural page scroll).
+    const duration = Math.min(650, Math.max(320, Math.abs(delta) * 0.45));
+    const t0 = performance.now();
+
+    return new Promise((resolve) => {
+      function frame(now) {
+        const t = Math.min(1, (now - t0) / duration);
+        const eased = 1 - Math.pow(1 - t, 3);
+        root.scrollTop = Math.round(startY + delta * eased);
+        if (t < 1) requestAnimationFrame(frame);
+        else resolve({ ok: true, dy: delta, scrollY: root.scrollTop, durationMs: Math.round(duration) });
+      }
+      requestAnimationFrame(frame);
+    });
   }
 
   function readPage() {
@@ -365,10 +635,20 @@ export const DOM_AGENT_SCRIPT = `
     getMap: () => numberAll(),
     lastMap: () => lastMap,
     click: (n) => clickN(n),
+    findByLabel: (label) => {
+      numberAll();
+      const m = findElementByLabel(label);
+      return m ? { n: m.n, text: m.text, type: m.type } : null;
+    },
     type: (n, text, enter) => typeN(n, text, enter),
     scroll: (dir, amt) => scrollPage(dir, amt),
     read: () => readPage(),
-    setBadgesVisible: (v) => { badgesVisible = !!v; numberAll(); return { ok: true, v: badgesVisible }; },
+    setBadgesVisible: (v) => {
+      // Visual badges stay off — Claude uses the internal numbered map only.
+      badgesVisible = false;
+      numberAll();
+      return { ok: true, v: false };
+    },
     showCursor: (v) => {
       installCursor();
       const c = document.getElementById(CURSOR_ID);
@@ -382,7 +662,27 @@ export const DOM_AGENT_SCRIPT = `
       if (window.__hunchoCursorForceHidden) window.__hunchoCursorForceHidden(!v);
       return { ok: true };
     },
-    info: () => ({ url: location.href, title: document.title, scrollY: window.scrollY, scrollH: document.documentElement.scrollHeight }),
+    setVoiceState: (s) => {
+      const allowed = { listening: 1, processing: 1, responding: 1, idle: 1 };
+      VOICE_UI.state = (s && allowed[s]) ? s : 'idle';
+      if (VOICE_UI.state === 'idle') VOICE_UI.level = 0;
+      updateVoiceUi();
+      return { ok: true, state: VOICE_UI.state };
+    },
+    setAudioLevel: (l) => {
+      VOICE_UI.level = Math.max(0, Math.min(1, Number(l) || 0));
+      return { ok: true };
+    },
+    flyToPoint: (x, y, label) => flyToPoint(Number(x), Number(y), label),
+    returnCursorToFollow: () => returnCursorToFollow(),
+    info: () => ({
+      url: location.href,
+      title: document.title,
+      scrollY: window.scrollY,
+      scrollH: document.documentElement.scrollHeight,
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+    }),
   };
   installStyles();
   installCursor();
@@ -395,14 +695,14 @@ export const DOM_TOOLS = [
   {
     name: 'click',
     description:
-      'Click an interactive element on the current page by its numbered badge. Use the element map provided in the most recent screenshot. Returns the text of the element that was clicked.',
+      'Click an interactive element on the current page by its numbered badge. Use the element map provided in the most recent screenshot. The reason field should quote distinctive visible text from the target element (e.g. the article headline) so Huncho snaps to the correct link on dense pages. Returns the text of the element that was clicked.',
     input_schema: {
       type: 'object',
       properties: {
         n: { type: 'integer', description: 'The number of the element to click (from the element map).' },
-        reason: { type: 'string', description: 'Short human-readable reason — e.g. "click the search button".' },
+        reason: { type: 'string', description: 'Why you are clicking — include distinctive visible text from the element map entry (headline, button label, etc.).' },
       },
-      required: ['n'],
+      required: ['n', 'reason'],
     },
   },
   {

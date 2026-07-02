@@ -25,6 +25,7 @@ export interface ClaudeRequestOptions {
   model: string;
   windowContext?: { app: string; title: string };
   briefMode?: boolean;
+  systemPrompt: string;
 }
 
 export interface CursorPointEvent {
@@ -70,7 +71,7 @@ export class ClaudeAPIClient extends EventEmitter {
       });
       userContent.push({
         type: 'text',
-        text: `[Screenshot: ${screen.label} | image size: ${screen.capturedWidth}×${screen.capturedHeight}px | use these image pixel coords for POINT tags]`,
+        text: `[Screenshot: ${screen.label} | tag with screen${screen.displayIndex} | image size: ${screen.capturedWidth}×${screen.capturedHeight}px | use these image pixel coords for POINT tags on THIS screenshot]`,
       });
     }
 
@@ -98,12 +99,12 @@ export class ClaudeAPIClient extends EventEmitter {
       },
     ];
 
-    const systemPrompt = options.briefMode
-      ? DUXY_CONFIG.systemPrompt + '\n\nBRIEF MODE: Keep ALL responses to 1-2 sentences maximum. Be direct and concise. No elaboration unless the user specifically asks for it.'
-      : DUXY_CONFIG.systemPrompt;
+    const systemPrompt = options.systemPrompt;
 
     const requestBody = {
       model: options.model,
+      // Keep full token budget in brief mode — tool_use JSON needs room; brief
+      // caps apply to spoken/display text on our side, not the API limit.
       max_tokens: 1024,
       stream: true,
       system: systemPrompt,

@@ -37,8 +37,22 @@ const FORBIDDEN_PROTOCOLS = ['javascript:', 'file:', 'data:', 'vbscript:'];
  */
 export function normalizeNavigateUrl(input: string): string | null {
   if (typeof input !== 'string') return null;
-  const trimmed = input.trim();
+  let trimmed = input.trim().replace(/[.!?,;:]+$/, '');
   if (!trimmed) return null;
+
+  const goToMatch = trimmed.match(
+    /^(?:go to|open|visit|navigate to|take me to)\s+(?:the\s+)?(.+)$/i,
+  );
+  if (goToMatch?.[1]) {
+    trimmed = goToMatch[1].trim().replace(/[.!?,;:]+$/, '');
+  }
+
+  const domainMatch = trimmed.match(
+    /\b([a-z0-9][-a-z0-9]*(?:\.[a-z0-9][-a-z0-9]*)+\.[a-z]{2,})\b/i,
+  );
+  if (domainMatch) {
+    return `https://${domainMatch[1].toLowerCase()}`;
+  }
 
   const lower = trimmed.toLowerCase();
   for (const bad of FORBIDDEN_PROTOCOLS) {
@@ -49,7 +63,7 @@ export function normalizeNavigateUrl(input: string): string | null {
   if (lower.startsWith('http://')) return 'https://' + trimmed.slice('http://'.length);
 
   if (trimmed.includes('.') && !trimmed.includes(' ')) {
-    return 'https://' + trimmed;
+    return `https://${trimmed.toLowerCase()}`;
   }
   return 'https://www.google.com/search?q=' + encodeURIComponent(trimmed);
 }

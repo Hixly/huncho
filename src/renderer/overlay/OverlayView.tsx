@@ -3,6 +3,8 @@ import { VoiceState, CursorPointAtPayload, AudioPowerLevelPayload, CursorPositio
 
 const YELLOW = '#F59E0B';
 const YELLOW_GLOW = 'rgba(245, 158, 11, 0.5)';
+const LISTEN_CYAN = '#22D3EE';
+const LISTEN_CYAN_GLOW = 'rgba(34, 211, 238, 0.85)';
 
 const DUCK_SIZE = 14;        // px
 const DUCK_HALF = DUCK_SIZE / 2;
@@ -187,14 +189,14 @@ export const OverlayView: React.FC = () => {
         duckElRef.current.style.transform = `scale(${scaleRef.current})`;
       }
 
-      // Waveform bars while listening
+      // Mic-reactive cyan bars while you speak
       if (voiceStateRef.current === 'listening') {
         phaseRef.current += 0.1;
         const profile = [0.4, 0.7, 1.0, 0.7, 0.4];
         barsRef.current.forEach((bar, i) => {
           if (!bar) return;
-          const easedLevel = Math.pow(Math.min(audioLevelRef.current * 2.85, 1), 0.76);
-          const reactive = easedLevel * 14 * profile[i];
+          const mic = Math.pow(Math.min(audioLevelRef.current * 2.85, 1), 0.76);
+          const reactive = mic * 14 * profile[i];
           const idle = (Math.sin(phaseRef.current + i * 1.2) + 1) / 2 * 2;
           bar.style.height = `${3 + reactive + idle}px`;
         });
@@ -259,6 +261,7 @@ export const OverlayView: React.FC = () => {
 
   const isListening = voiceState === 'listening';
   const isProcessing = voiceState === 'processing';
+  const isResponding = voiceState === 'responding';
 
   return (
     <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', overflow: 'hidden' }}>
@@ -290,7 +293,7 @@ export const OverlayView: React.FC = () => {
 
         <DuckIcon />
 
-        {/* Waveform bars above duck when listening */}
+        {/* Cyan mic bars — you are speaking */}
         {isListening && (
           <div style={{
             position: 'absolute',
@@ -309,10 +312,39 @@ export const OverlayView: React.FC = () => {
                 style={{
                   width: '3px',
                   height: '4px',
-                  backgroundColor: YELLOW,
+                  backgroundColor: LISTEN_CYAN,
                   borderRadius: '2px',
                   alignSelf: 'center',
-                  boxShadow: `0 0 4px ${YELLOW}`,
+                  boxShadow: `0 0 5px ${LISTEN_CYAN_GLOW}`,
+                }}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Amber pulsing dots — Huncho is speaking */}
+        {isResponding && (
+          <div style={{
+            position: 'absolute',
+            top: -24,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            height: '16px',
+          }}>
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                style={{
+                  width: '5px',
+                  height: '5px',
+                  borderRadius: '50%',
+                  backgroundColor: YELLOW,
+                  boxShadow: `0 0 6px ${YELLOW_GLOW}`,
+                  animation: 'hunchoDotPulse 1.1s ease-in-out infinite',
+                  animationDelay: `${i * 0.15}s`,
                 }}
               />
             ))}
@@ -326,7 +358,7 @@ export const OverlayView: React.FC = () => {
             inset: -6,
             borderRadius: '50%',
             border: `2.5px solid transparent`,
-            borderTop: `2.5px solid ${YELLOW}`,
+            borderTop: `2.5px solid ${LISTEN_CYAN}`,
             animation: 'spin 0.8s linear infinite',
             pointerEvents: 'none',
           }} />
@@ -359,6 +391,10 @@ export const OverlayView: React.FC = () => {
         @keyframes pulse {
           0%, 100% { opacity: 0.15; transform: scale(1); }
           50% { opacity: 0.4; transform: scale(1.5); }
+        }
+        @keyframes hunchoDotPulse {
+          0%, 100% { opacity: 0.35; transform: scale(0.75); }
+          50% { opacity: 1; transform: scale(1.15); }
         }
         @keyframes spin {
           from { transform: rotate(0deg); }

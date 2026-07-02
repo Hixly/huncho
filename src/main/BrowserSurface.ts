@@ -1,7 +1,14 @@
 import { WebContentsView, BaseWindow, session } from 'electron';
 import { EventEmitter } from 'events';
+import { VoiceState } from '../shared/ipc-types';
 import { normalizeNavigateUrl } from './tools/navigate-tool';
 import { DOM_AGENT_SCRIPT, DomToolResult, ElementMapEntry } from './tools/dom-agent';
+
+export interface BrowserScreenshot {
+  base64: string;
+  width: number;
+  height: number;
+}
 
 /**
  * Huncho's owned in-app browser. Wraps an Electron WebContentsView and
@@ -40,6 +47,9 @@ export class BrowserSurface extends EventEmitter {
 
     wc.on('did-navigate', (_e, url) => this.handleNavigate(url));
     wc.on('did-navigate-in-page', (_e, url) => this.handleNavigate(url));
+    wc.on('did-fail-load', (_e, code, desc, url) => {
+      console.warn(`[BrowserSurface] did-fail-load ${code} ${desc} — ${url}`);
+    });
 
     // Re-inject the DOM agent (Huncho's Eyes + Hands) after every navigation
     // and after dynamic SPA route changes. The agent itself is idempotent.
@@ -183,7 +193,7 @@ export class BrowserSurface extends EventEmitter {
    * normalizer the tests cover. Returns the URL it actually went to, or null
    * if it was rejected as unsafe.
    */
-  navigate(rawUrl: string): string | null {
+  async navigate(rawUrl: string): Promise<string | null> {
     const safe = normalizeNavigateUrl(rawUrl);
     if (!safe) {
       console.warn(`[BrowserSurface] Refused to navigate to unsafe url: ${rawUrl}`);
@@ -194,8 +204,46 @@ export class BrowserSurface extends EventEmitter {
       return null;
     }
     console.log(`[BrowserSurface] navigate -> ${safe}`);
-    this.view.webContents.loadURL(safe);
+    const wc = this.view.webContents;
+    try {
+      await wc.loadURL(safe);
+      const loaded = await this.waitForMainLoad(wc, 15000);
+      if (!loaded) {
+        console.warn(`[BrowserSurface] Timed out waiting for load: ${safe}`);
+      }
+    } catch (err) {
+      console.warn('[BrowserSurface] loadURL failed:', err);
+      return null;
+    }
     return safe;
+  }
+
+  /** Wait for the main frame to finish loading (or fail). */
+  private waitForMainLoad(wc: import('electron').WebContents, timeoutMs: number): Promise<boolean> {
+    if (wc.isDestroyed()) return Promise.resolve(false);
+    if (!wc.isLoading()) return Promise.resolve(true);
+
+    return new Promise((resolve) => {
+      const cleanup = () => {
+        clearTimeout(timer);
+        wc.removeListener('did-finish-load', onLoad);
+        wc.removeListener('did-fail-load', onFail);
+      };
+      const onLoad = () => {
+        cleanup();
+        resolve(true);
+      };
+      const onFail = () => {
+        cleanup();
+        resolve(false);
+      };
+      const timer = setTimeout(() => {
+        cleanup();
+        resolve(false);
+      }, timeoutMs);
+      wc.once('did-finish-load', onLoad);
+      wc.once('did-fail-load', onFail);
+    });
   }
 
   getWebContents(): import('electron').WebContents | null {
@@ -216,6 +264,26 @@ export class BrowserSurface extends EventEmitter {
       await wc.executeJavaScript(DOM_AGENT_SCRIPT, true);
     } catch (err) {
       console.warn('[BrowserSurface] agent injection failed:', err);
+    }
+  }
+
+  /** Page metadata from the injected DOM agent (viewport size, scroll, URL). */
+  async getPageInfo(): Promise<{ innerWidth: number; innerHeight: number; url: string } | null> {
+    await this.injectAgent();
+    const wc = this.view?.webContents;
+    if (!wc || wc.isDestroyed()) return null;
+    try {
+      const result = await wc.executeJavaScript('window.__huncho && window.__huncho.info()');
+      if (!result || typeof result !== 'object') return null;
+      const info = result as { innerWidth?: number; innerHeight?: number; url?: string };
+      return {
+        innerWidth: info.innerWidth ?? 0,
+        innerHeight: info.innerHeight ?? 900,
+        url: info.url ?? '',
+      };
+    } catch (err) {
+      console.warn('[BrowserSurface] getPageInfo failed:', err);
+      return null;
     }
   }
 
@@ -245,6 +313,25 @@ export class BrowserSurface extends EventEmitter {
     ).catch(() => { /* non-fatal */ });
   }
 
+  /** Push Huncho voice state to the in-page diamond (waveform / spinner). */
+  setVoiceState(state: VoiceState): void {
+    const wc = this.view?.webContents;
+    if (!wc || wc.isDestroyed()) return;
+    wc.executeJavaScript(
+      `window.__huncho && window.__huncho.setVoiceState && window.__huncho.setVoiceState(${JSON.stringify(state)})`,
+    ).catch(() => { /* non-fatal */ });
+  }
+
+  /** Mic level for reactive waveform bars on the in-page diamond. */
+  setAudioLevel(level: number): void {
+    const wc = this.view?.webContents;
+    if (!wc || wc.isDestroyed()) return;
+    const clamped = Math.max(0, Math.min(1, level));
+    wc.executeJavaScript(
+      `window.__huncho && window.__huncho.setAudioLevel && window.__huncho.setAudioLevel(${clamped})`,
+    ).catch(() => { /* non-fatal */ });
+  }
+
   /** Show or hide the numbered chrome badges on the page. */
   async setBadgesVisible(visible: boolean): Promise<void> {
     await this.injectAgent();
@@ -260,6 +347,21 @@ export class BrowserSurface extends EventEmitter {
   /** Click element by its number. */
   async clickByNumber(n: number): Promise<DomToolResult> {
     return this.callAgent(`window.__huncho.click(${JSON.stringify(n)})`);
+  }
+
+  /** Resolve an element by visible label text (fuzzy match against the live map). */
+  async findElementByLabel(label: string): Promise<{ n: number; text: string; type: string } | null> {
+    await this.injectAgent();
+    const wc = this.view?.webContents;
+    if (!wc || wc.isDestroyed()) return null;
+    try {
+      const out = await wc.executeJavaScript(
+        `window.__huncho && window.__huncho.findByLabel && window.__huncho.findByLabel(${JSON.stringify(label)})`,
+      );
+      return out && typeof out.n === 'number' ? out : null;
+    } catch {
+      return null;
+    }
   }
 
   /** Type into element by its number. */
@@ -279,16 +381,40 @@ export class BrowserSurface extends EventEmitter {
   }
 
   /** Capture a JPEG screenshot of the current browser surface. */
-  async captureScreenshotBase64(): Promise<string | null> {
+  async captureScreenshotBase64(): Promise<BrowserScreenshot | null> {
     const wc = this.view?.webContents;
     if (!wc || wc.isDestroyed()) return null;
     try {
       const img = await wc.capturePage();
-      return img.toJPEG(72).toString('base64');
+      const { width, height } = img.getSize();
+      return {
+        base64: img.toJPEG(72).toString('base64'),
+        width,
+        height,
+      };
     } catch (err) {
       console.warn('[BrowserSurface] capturePage failed:', err);
       return null;
     }
+  }
+
+  /** Fly the in-page diamond to a page coordinate (from browser screenshot POINT tags). */
+  async flyCursorTo(x: number, y: number, label: string): Promise<void> {
+    await this.injectAgent();
+    const wc = this.view?.webContents;
+    if (!wc || wc.isDestroyed()) return;
+    await wc.executeJavaScript(
+      `window.__huncho && window.__huncho.flyToPoint(${Math.round(x)}, ${Math.round(y)}, ${JSON.stringify(label)})`,
+    );
+  }
+
+  /** Resume cursor-follow after a POINT flight completes. */
+  async returnCursorToFollow(): Promise<void> {
+    const wc = this.view?.webContents;
+    if (!wc || wc.isDestroyed()) return;
+    await wc.executeJavaScript(
+      'window.__huncho && window.__huncho.returnCursorToFollow && window.__huncho.returnCursorToFollow()',
+    ).catch(() => { /* non-fatal */ });
   }
 
   private async callAgent(expr: string): Promise<DomToolResult> {

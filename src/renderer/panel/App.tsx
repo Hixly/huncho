@@ -3,45 +3,7 @@ import { VoiceState, StoredMessage } from '../../shared/ipc-types';
 import { DS } from './components/design-system';
 import { ModelPicker } from './components/ModelPicker';
 import { WaveformDisplay } from './components/WaveformDisplay';
-// @ts-ignore — vite handles PNG imports as URL strings
-import hunchoLogoUrl from '../../../assets/branding/huncho-main-logo.png';
-
-// ── Huncho logo (crown mark + wordmark) ──────────────────────────────────────
-// Uses the real HunchoMainLogo.png from assets/branding/.
-//   mode='mark' (default): crops to the top portion so only the crown shows.
-//     Use for small spots next to the "Huncho" text (header, chat avatars) so
-//     the baked-in wordmark doesn't read as duplicate "Huncho Huncho".
-//   mode='full': shows the entire image (crown + wordmark). Use for the big
-//     empty-state hero where the wordmark looks intentional.
-const DuckLogo: React.FC<{ size?: number; mode?: 'mark' | 'full' }> = ({ size = 30, mode = 'mark' }) => {
-  // The crown occupies roughly the top 72% of the source image; the wordmark is below.
-  const CROWN_RATIO = 0.72;
-  const isFull = mode === 'full';
-  // For the small "mark" form, render the logo as a chrome-bg disc so the PNG's
-  // baked-in black background blends in and the gold crown reads cleanly.
-  return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        flexShrink: 0,
-        backgroundColor: isFull ? 'transparent' : '#2a2a34',
-        backgroundImage: `url(${hunchoLogoUrl})`,
-        backgroundRepeat: 'no-repeat',
-        backgroundSize: isFull ? 'contain' : `${size}px ${Math.round(size / CROWN_RATIO)}px`,
-        backgroundPosition: isFull ? 'center' : 'top center',
-        borderRadius: isFull ? 0 : '50%',
-        border: isFull ? 'none' : '1px solid #d8d8d0',
-        boxShadow: isFull ? 'none' : '0 1px 4px rgba(0,0,0,0.10)',
-        // `lighten` on the chrome disc lets gold pixels show; `multiply` on the
-        // full hero lets the wordmark read against the off-white canvas.
-        mixBlendMode: (isFull ? 'multiply' : 'lighten') as any,
-      }}
-      aria-label="Huncho"
-      role="img"
-    />
-  );
-};
+import { HunchoDiamond } from './components/HunchoDiamond';
 
 // ── Typing dots ───────────────────────────────────────────────────────────────
 const TypingDots: React.FC = () => (
@@ -99,7 +61,7 @@ const UserBubble: React.FC<{ text: string; timestamp?: number; pending?: boolean
 
 const HunchoBubble: React.FC<{ text: string; timestamp?: number; streaming?: boolean }> = ({ text, timestamp, streaming }) => (
   <div style={{ display: 'flex', alignItems: 'flex-end', gap: '7px' }}>
-    <DuckLogo size={36} />
+    <HunchoDiamond width={22} height={36} />
     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxWidth: '78%' }}>
       <div style={{
         backgroundColor: DS.colors.surface3,
@@ -131,7 +93,7 @@ const HunchoBubble: React.FC<{ text: string; timestamp?: number; streaming?: boo
 
 const HunchoTyping: React.FC = () => (
   <div style={{ display: 'flex', alignItems: 'flex-end', gap: '7px' }}>
-    <DuckLogo size={36} />
+    <HunchoDiamond width={22} height={36} />
     <div style={{
       backgroundColor: DS.colors.surface3,
       border: `1px solid ${DS.colors.border}`,
@@ -255,7 +217,7 @@ export const App: React.FC = () => {
     const items: React.ReactNode[] = [];
     let lastDate = '';
 
-    const allMessages = [...messages];
+    const allMessages = messages.slice(-40);
 
     allMessages.forEach((msg, i) => {
       const dateLabel = formatDateSeparator(msg.timestamp);
@@ -321,7 +283,7 @@ export const App: React.FC = () => {
         cursor: 'grab',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
-          <DuckLogo size={44} />
+          <HunchoDiamond width={26} height={42} />
           <div>
             <div style={{ fontSize: '15px', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
               Huncho
@@ -422,8 +384,19 @@ export const App: React.FC = () => {
             color: DS.colors.textMuted, fontSize: '12px', textAlign: 'center',
             padding: '40px 20px',
           }}>
-            <DuckLogo size={88} mode="full" />
-            <div style={{ marginTop: '8px', lineHeight: 1.6 }}>
+            <HunchoDiamond width={36} height={58} />
+            <div style={{
+              fontSize: '20px',
+              fontWeight: 700,
+              letterSpacing: '-0.03em',
+              background: DS.colors.chromeGradient,
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+            }}>
+              Huncho
+            </div>
+            <div style={{ marginTop: '4px', lineHeight: 1.6 }}>
               Hold <span style={{
                 backgroundColor: DS.colors.surface2,
                 border: `1px solid ${DS.colors.border}`,

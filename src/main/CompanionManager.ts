@@ -13,11 +13,19 @@ import { ConversationStore } from './ConversationStore';
 import { captureActiveWindow, WindowContext } from './WindowContextManager';
 import { BrowserSurface } from './BrowserSurface';
 import { isDangerousAction, DomToolResult } from './tools/dom-agent';
+import { formatElementMapForClaude } from './tools/element-map-format';
+import { PersonalityStore } from './personality/PersonalityStore';
+import { buildHunchoSystemPrompt } from './personality/build-system-prompt';
+import { sanitizeForUser } from './personality/sanitize-output';
+import { enforceBriefResponse } from './personality/enforce-brief';
+import { buildClickLabelQueries } from './tools/resolve-click-target';
+import { formatPanelReply, transcriptImpliesMultiStep } from './tools/transcript-intent';
 
 export class CompanionManager {
   private state: VoiceState = 'idle';
   private currentModel: string = DUXY_CONFIG.defaultModel;
   private briefMode = false;
+  private inAgentLoop = false;
   private conversationHistory: ConversationMessage[] = [];
   private lastTranscript = '';
 
@@ -71,12 +79,21 @@ export class CompanionManager {
 
   // Screenshot state: captured at PTT press, used in pipeline
   private lastScreenshots: ScreenshotInfo[] = [];
+  private lastBrowserScreenshotMeta: {
+    width: number;
+    height: number;
+    viewportWidth: number;
+    viewportHeight: number;
+  } | null = null;
 
   // Streaming TTS state
   private ttsStreamPos = 0;
   private ttsChunkQueue: string[] = [];
   private ttsAllQueued = false;
   private ttsProcessorPromise: Promise<void> | null = null;
+  private lastCleanAccumulated = '';
+  private briefSpokenThisIter = false;
+  private personalityStore: PersonalityStore;
 
   constructor(
     hotkeyMonitor: GlobalHotkeyMonitor,
@@ -93,11 +110,13 @@ export class CompanionManager {
     this.ttsClient = new ElevenLabsTTSClient();
     this.edgeTTS = new EdgeTTSClient();
     this.conversationStore = new ConversationStore();
+    this.personalityStore = new PersonalityStore();
   }
 
   async initialize(): Promise<void> {
     // Load persisted conversation history
     this.conversationStore.load();
+    this.personalityStore.load();
     this.conversationHistory = this.conversationStore.toClaudeHistory(DUXY_CONFIG.maxConversationHistory);
     console.log(`[CompanionManager] Restored ${this.conversationHistory.length} messages into Claude context`);
 
@@ -118,7 +137,23 @@ export class CompanionManager {
     this.audioRecorder.setTranscriptReadyCallback(async (transcript: string) => {
       console.log(`[CompanionManager] Transcript received from renderer: "${transcript}"`);
       this.broadcastToAll(IPC.TRANSCRIPT_UPDATE, { transcript, isFinal: true });
-      if (this.state !== 'listening' && this.state !== 'processing') return;
+      if (this.state !== 'listening' && this.state !== 'processing') {
+        // Stuck mid-response from a prior turn — recover so new commands aren't dropped.
+        if (this.state === 'responding') {
+          console.warn('[CompanionManager] Recovering stuck responding state for new transcript');
+          this.claudeClient.cancel();
+          this.ttsChunkQueue = [];
+          this.ttsProcessorPromise = null;
+          this.ttsAllQueued = true;
+          const panelWin = this.trayManager.getPanelWindow();
+          if (panelWin && !panelWin.isDestroyed()) {
+            panelWin.webContents.send(IPC.TTS_STOP);
+            panelWin.webContents.send(IPC.TTS_ALL_SENT);
+          }
+        } else {
+          return;
+        }
+      }
       // If a dangerous-action confirmation is pending, intercept yes/no here
       // before running the normal LLM pipeline.
       if (this.pendingConfirmation) {
@@ -128,6 +163,17 @@ export class CompanionManager {
           return;
         }
       }
+      if (await this.tryDirectScrollCommand(transcript)) {
+        return;
+      }
+      const trimmed = transcript.trim();
+      if (trimmed.length < 2 || /^[.?!,\s]+$/.test(trimmed)) {
+        console.log(`[CompanionManager] Ignoring junk transcript: "${transcript}"`);
+        this.setState('idle');
+        this.trayManager.doneRecording();
+        return;
+      }
+      this.personalityStore.tryLearnFromUserMessage(transcript);
       this.runPipeline(transcript);
     });
 
@@ -135,30 +181,66 @@ export class CompanionManager {
     // present the panel with the AGGREGATED text (prev iters + this iter) so
     // the chat display stays continuous rather than resetting per iter.
     this.claudeClient.on('textChunk', ({ chunk, accumulated }: { chunk: string; accumulated: string }) => {
-      const display = this.aggregatedResponseText
-        ? this.aggregatedResponseText + '\n\n' + accumulated
-        : accumulated;
-      this.broadcastToAll(IPC.RESPONSE_CHUNK, { text: chunk, accumulated: display });
-      // Stream TTS detects sentence boundaries on THIS iter's accumulated.
-      this.pushTTSSentences(accumulated);
+      const cleanAccumulated = sanitizeForUser(accumulated);
+      const cleanChunk = cleanAccumulated.slice(this.lastCleanAccumulated.length) || sanitizeForUser(chunk);
+      this.lastCleanAccumulated = cleanAccumulated;
+
+      // Agent-loop turns update the panel once per iteration; streaming would stack duplicates.
+      if (this.briefMode || this.inAgentLoop) return;
+
+      const prior = this.aggregatedResponseText ? sanitizeForUser(this.aggregatedResponseText) : '';
+      const display = prior ? `${prior}\n\n${cleanAccumulated}` : cleanAccumulated;
+
+      this.broadcastToAll(IPC.RESPONSE_CHUNK, { text: cleanChunk, accumulated: display });
+      this.pushTTSSentences(cleanAccumulated);
     });
 
-    // Scale POINT coordinates from screenshot space → actual screen space
+    // Route POINT tags to the in-page diamond (browser) and/or desktop overlay.
     this.claudeClient.on('cursorPoint', (event: CursorPointEvent) => {
-      const screenInfo = this.lastScreenshots.find(s => s.displayIndex === event.displayIndex);
-      let x = event.x;
-      let y = event.y;
+      const meta = this.lastBrowserScreenshotMeta;
+      const browserPoint =
+        this.browser &&
+        meta &&
+        meta.width > 0 &&
+        (event.displayIndex === 99 ||
+          (event.x >= 0 && event.y >= 0 && event.x <= meta.width && event.y <= meta.height));
 
-      if (screenInfo && screenInfo.capturedWidth > 0 && screenInfo.capturedHeight > 0) {
-        x = Math.round(event.x * (screenInfo.screenWidth / screenInfo.capturedWidth));
-        y = Math.round(event.y * (screenInfo.screenHeight / screenInfo.capturedHeight));
-        console.log(`[CompanionManager] POINT scaled: (${event.x},${event.y}) → (${x},${y}) [${screenInfo.capturedWidth}×${screenInfo.capturedHeight} → ${screenInfo.screenWidth}×${screenInfo.screenHeight}]`);
+      if (browserPoint && meta) {
+        const x = Math.round(event.x * (meta.viewportWidth / meta.width));
+        const y = Math.round(event.y * (meta.viewportHeight / meta.height));
+        console.log(
+          `[CompanionManager] POINT → in-page diamond (${event.x},${event.y}) → (${x},${y}) — ${event.label}`,
+        );
+        void this.browser!.getElementMap().then(() => this.browser!.flyCursorTo(x, y, event.label));
       }
 
-      this.overlayManager.forwardCursorPointAt({ x, y, label: event.label, displayIndex: event.displayIndex });
+      // Desktop overlay flight (full-screen captures, screen0/screen1…)
+      if (event.displayIndex !== 99) {
+        const screenInfo = this.lastScreenshots.find((s) => s.displayIndex === event.displayIndex);
+        let x = event.x;
+        let y = event.y;
+
+        if (screenInfo && screenInfo.capturedWidth > 0 && screenInfo.capturedHeight > 0) {
+          x = Math.round(event.x * (screenInfo.screenWidth / screenInfo.capturedWidth));
+          y = Math.round(event.y * (screenInfo.screenHeight / screenInfo.capturedHeight));
+          console.log(
+            `[CompanionManager] POINT → overlay (${event.x},${event.y}) → (${x},${y}) — ${event.label}`,
+          );
+        }
+
+        this.overlayManager.forwardCursorPointAt({
+          x,
+          y,
+          label: event.label,
+          displayIndex: event.displayIndex,
+        });
+      }
     });
 
     this.claudeClient.on('toolUse', (event: { id: string; name: string; input: Record<string, unknown> }) => {
+      console.log(
+        `[Agent] tool=${event.name} model=${this.currentModel} input=${JSON.stringify(event.input).slice(0, 200)}`,
+      );
       const p = this.dispatchTool(event).catch((err) => {
         console.error(`[CompanionManager] Tool dispatch error (${event.name}):`, err);
       });
@@ -169,9 +251,10 @@ export class CompanionManager {
     this.hotkeyMonitor.on('pttPress', () => this.handlePttPress());
     this.hotkeyMonitor.on('pttRelease', () => this.handlePttRelease());
 
-    // IPC: power level forwarding from renderer to all windows (waveform display)
+    // IPC: power level forwarding from renderer to overlay + in-page diamond
     ipcMain.on(IPC.AUDIO_POWER_LEVEL, (_event, payload) => {
       this.broadcastToAll(IPC.AUDIO_POWER_LEVEL, payload);
+      this.browser?.setAudioLevel(payload.level);
     });
 
     // IPC: model change request from renderer
@@ -194,6 +277,7 @@ export class CompanionManager {
     // always hits the interrupt block, never starts a spurious new listening session.
     ipcMain.on(IPC.TTS_COMPLETE, () => {
       this.overlayManager.broadcastToAll(IPC.TTS_COMPLETE);
+      void this.browser?.returnCursorToFollow();
       if (this.state === 'responding') {
         this.setState('idle');
         this.trayManager.doneRecording();
@@ -326,6 +410,7 @@ export class CompanionManager {
 
     // Show panel off-screen so renderer can access getUserMedia
     this.trayManager.showForRecording();
+    this.overlayManager.showAll();
 
     try {
       await this.audioRecorder.startRecording();
@@ -372,6 +457,8 @@ export class CompanionManager {
 
   // Called from textChunk handler — enqueue all complete sentences found in the accumulated text
   private pushTTSSentences(accumulated: string): void {
+    if (this.briefMode && this.briefSpokenThisIter) return;
+
     const newText = accumulated.slice(this.ttsStreamPos);
     if (!newText) return;
 
@@ -381,9 +468,15 @@ export class CompanionManager {
     let match;
 
     while ((match = regex.exec(newText)) !== null) {
+      if (this.briefMode && this.briefSpokenThisIter) break;
+
       const boundaryEnd = match.index + 1;
-      const sentence = newText.slice(lastEnd, boundaryEnd).trim();
-      if (sentence.length > 3) { // skip tiny fragments like "Ok."
+      let sentence = newText.slice(lastEnd, boundaryEnd).trim();
+      if (sentence.length > 3) {
+        if (this.briefMode) {
+          sentence = enforceBriefResponse(sentence, 8);
+          this.briefSpokenThisIter = true;
+        }
         this.enqueueTTS(sentence);
       }
       // Advance past whitespace after punctuation
@@ -396,9 +489,55 @@ export class CompanionManager {
   }
 
   private enqueueTTS(text: string): void {
-    this.ttsChunkQueue.push(text);
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    if (this.state === 'processing') this.setState('responding');
+    this.ttsChunkQueue.push(trimmed);
     if (!this.ttsProcessorPromise) {
       this.ttsProcessorPromise = this.runTTSProcessor();
+    }
+  }
+
+  /** Unblock the TTS processor — or finish immediately when there is nothing to speak. */
+  /** Short spoken ack when the model called a tool but returned no text. */
+  private toolStepAck(tool: string): string {
+    switch (tool) {
+      case 'scroll':
+        return 'Scrolled.';
+      case 'navigate':
+        return 'Opening site.';
+      case 'click':
+        return 'Clicking.';
+      case 'type_text':
+        return 'Typing.';
+      default:
+        return '';
+    }
+  }
+
+  private appendAggregatedLine(aggregated: string, line: string): string {
+    const next = line.trim();
+    if (!next) return aggregated;
+    const last = aggregated.split('\n\n').pop()?.trim();
+    if (last === next) return aggregated;
+    return aggregated ? `${aggregated}\n\n${next}` : next;
+  }
+
+  private sealTTSPlayback(): void {
+    this.ttsAllQueued = true;
+    if (this.ttsProcessorPromise) return;
+
+    const panelWin = this.trayManager.getPanelWindow();
+    if (this.ttsChunkQueue.length > 0) {
+      this.ttsProcessorPromise = this.runTTSProcessor();
+      return;
+    }
+
+    if (panelWin && !panelWin.isDestroyed()) {
+      panelWin.webContents.send(IPC.TTS_ALL_SENT);
+    } else {
+      this.setState('idle');
+      this.trayManager.doneRecording();
     }
   }
 
@@ -470,7 +609,7 @@ export class CompanionManager {
       case 'navigate': {
         const url = typeof input.url === 'string' ? input.url : '';
         if (!url) return console.warn('[CompanionManager] navigate called without a url');
-        const final = this.browser.navigate(url);
+        const final = await this.browser.navigate(url);
         console.log(`[CompanionManager] tool navigate("${url}") -> ${final ?? 'REJECTED'}`);
         this.lastDomResult = { tool: 'navigate', result: { ok: !!final, url: final ?? null } };
         // Browser nav steals z-order on Windows — re-promote overlay so the diamond stays visible.
@@ -479,11 +618,29 @@ export class CompanionManager {
       }
 
       case 'click': {
-        const n = typeof input.n === 'number' ? input.n : NaN;
+        let n = typeof input.n === 'number' ? input.n : NaN;
         const reason = typeof input.reason === 'string' ? input.reason : '';
-        if (!Number.isFinite(n)) return console.warn('[CompanionManager] click called without a valid n');
         const map = await this.browser.getElementMap();
-        const target = map.find((e) => e.n === n);
+        const mapTarget = Number.isFinite(n) ? map.find((e) => e.n === n) : undefined;
+
+        const labelQueries = buildClickLabelQueries(
+          reason,
+          mapTarget?.text ?? '',
+          this.lastTranscript,
+        );
+        for (const labelQuery of labelQueries) {
+          const snapped = await this.browser.findElementByLabel(labelQuery);
+          if (snapped?.n) {
+            console.log(
+              `[CompanionManager] click label snap: "${labelQuery.slice(0, 60)}" → n=${snapped.n} ("${snapped.text?.slice(0, 60)}")`,
+            );
+            n = snapped.n;
+            break;
+          }
+        }
+
+        if (!Number.isFinite(n)) return console.warn('[CompanionManager] click called without a valid n');
+        const target = map.find((e) => e.n === n) ?? (await this.browser.getElementMap()).find((e) => e.n === n);
         const elementText = target?.text ?? '';
         if (isDangerousAction(elementText, reason)) {
           this.pendingConfirmation = { tool: 'click', n, elementText, reason };
@@ -587,6 +744,42 @@ export class CompanionManager {
     return false;
   }
 
+  /** Scroll phrases like "scroll down" — execute immediately, no LLM narrating. */
+  private async tryDirectScrollCommand(transcript: string): Promise<boolean> {
+    if (!this.browser) return false;
+    const match = transcript.trim().toLowerCase().match(/\bscroll\s+(down|up|top|bottom)\b/);
+    if (!match) return false;
+
+    const direction = match[1] as 'up' | 'down' | 'top' | 'bottom';
+    const ack: Record<string, string> = {
+      down: 'Scrolled down.',
+      up: 'Scrolled up.',
+      top: 'Top of page.',
+      bottom: 'Bottom of page.',
+    };
+
+    console.log(`[CompanionManager] Direct scroll: ${direction}`);
+    this.lastTranscript = transcript;
+    this.conversationStore.addMessage('user', transcript);
+    this.conversationHistory.push({ role: 'user', content: transcript });
+
+    this.setState('processing');
+    this.resetTTSStream();
+    this.aggregatedResponseText = '';
+
+    const result = await this.browser.scrollPage(direction);
+    console.log(`[CompanionManager] Direct scroll result: ${JSON.stringify(result)}`);
+
+    const reply = ack[direction] ?? 'Scrolled.';
+    this.conversationStore.addMessage('assistant', reply);
+    this.conversationHistory.push({ role: 'assistant', content: reply });
+    this.broadcastToAll(IPC.RESPONSE_CHUNK, { text: reply, accumulated: reply });
+    this.enqueueTTS(reply);
+    this.sealTTSPlayback();
+    this.broadcastToAll(IPC.RESPONSE_COMPLETE);
+    return true;
+  }
+
   // ──────────────────────────────────────────────────────────────────────────
 
   private async runPipeline(transcript: string): Promise<void> {
@@ -600,6 +793,8 @@ export class CompanionManager {
     this.setState('processing');
     this.resetTTSStream();
     this.aggregatedResponseText = '';
+    this.lastCleanAccumulated = '';
+    this.inAgentLoop = true;
 
     // Persist the user turn once up front; the assistant turn accumulates across
     // agent-loop iterations and gets persisted at the end.
@@ -613,8 +808,15 @@ export class CompanionManager {
     let iteration = 0;
     let aggregatedText = '';
     let currentUserMessage = transcript;
+    const multiStep = transcriptImpliesMultiStep(transcript);
 
-    this.setState('responding');
+    const pipelineDeadline = setTimeout(() => {
+      if (this.state === 'processing' || this.state === 'responding') {
+        console.warn('[CompanionManager] Pipeline timeout — aborting stuck turn');
+        this.pendingPipelineAbort = true;
+        this.claudeClient.cancel();
+      }
+    }, 90000);
 
     try {
     while (iteration < MAX_AGENT_ITERATIONS) {
@@ -630,24 +832,37 @@ export class CompanionManager {
 
       if (this.browser) {
         try {
-          const [browserShot, elementMap] = await Promise.all([
+          const [browserShot, elementMap, pageInfo] = await Promise.all([
             this.browser.captureScreenshotBase64(),
             this.browser.getElementMap(),
+            this.browser.getPageInfo(),
           ]);
           if (browserShot) {
+            const vpW = pageInfo?.innerWidth ?? browserShot.width;
+            const vpH = pageInfo?.innerHeight ?? browserShot.height;
+            this.lastBrowserScreenshotMeta = {
+              width: browserShot.width,
+              height: browserShot.height,
+              viewportWidth: vpW,
+              viewportHeight: vpH,
+            };
             screenshotList.push({
-              base64: browserShot,
+              base64: browserShot.base64,
               label: `Huncho browser surface (iter ${iteration})`,
               displayIndex: 99,
-              capturedWidth: 0,
-              capturedHeight: 0,
-              screenWidth: 0,
-              screenHeight: 0,
+              capturedWidth: browserShot.width,
+              capturedHeight: browserShot.height,
+              screenWidth: vpW,
+              screenHeight: vpH,
             });
           }
           if (elementMap.length > 0) {
-            const compact = elementMap.slice(0, 80).map((e) => `[${e.n}] ${e.type}: ${e.text}`).join('\n');
-            browserContextText = `[Browser element map — only use these numbers with click/type_text]\n${compact}`;
+            const viewportHeight = pageInfo?.innerHeight ?? 900;
+            browserContextText = formatElementMapForClaude(elementMap, { viewportHeight });
+            console.log(
+              `[Agent] iter=${iteration}/${MAX_AGENT_ITERATIONS} model=${this.currentModel} ` +
+              `elements=${elementMap.length} viewportH=${viewportHeight}`,
+            );
           }
           if (this.lastDomResult) {
             const r = this.lastDomResult;
@@ -663,6 +878,8 @@ export class CompanionManager {
       // THIS iteration's accumulated text, not the previous one. We DO keep
       // the audio chunk queue draining across iterations.
       this.ttsStreamPos = 0;
+      this.lastCleanAccumulated = '';
+      this.briefSpokenThisIter = false;
 
       // Clear in-flight dispatch tracking for this turn
       this.inFlightDispatches = [];
@@ -678,60 +895,104 @@ export class CompanionManager {
           model: this.currentModel,
           windowContext: this.lastWindowContext,
           briefMode: this.briefMode,
+          systemPrompt: buildHunchoSystemPrompt({
+            personalityMarkdown: this.personalityStore.getPersonalityMarkdown(),
+            learnedRules: this.personalityStore.getLearnedRules(),
+            briefMode: this.briefMode,
+          }),
         });
-        iterText = result.fullText;
+        iterText = sanitizeForUser(result.fullText);
+        if (this.briefMode) {
+          iterText = enforceBriefResponse(iterText, 8);
+        }
       } catch (err: any) {
         if (err?.name === 'AbortError') {
           console.log('[CompanionManager] Claude request aborted');
           break;
         }
         console.error('[CompanionManager] Claude API error:', err);
+        iterText = this.briefMode ? 'Something went wrong.' : 'Sorry, I hit an error. Try again.';
+        this.broadcastToAll(IPC.RESPONSE_CHUNK, { text: iterText, accumulated: iterText });
         break;
       }
 
-      // Flush remainder of THIS iteration's text into the TTS queue
-      const remainder = iterText.slice(this.ttsStreamPos).trim();
-      if (remainder) this.enqueueTTS(remainder);
-
-      aggregatedText += (aggregatedText ? '\n\n' : '') + iterText;
-      this.aggregatedResponseText = aggregatedText;
-
-      // Wait for all tool dispatches from this iteration to finish so we know
-      // whether the agent should continue (lastDomResult will be set if any
-      // DOM-affecting tool fired during this turn).
+      // Wait for tool dispatches BEFORE deciding what to say — tool-only turns
+      // often have empty model text until the tool completes.
       if (this.inFlightDispatches.length > 0) {
         await Promise.all(this.inFlightDispatches);
       }
 
+      if (!iterText.trim()) {
+        const tool = this.lastDomResult?.tool;
+        if (tool) {
+          iterText = this.toolStepAck(tool);
+          if (this.briefMode) iterText = enforceBriefResponse(iterText, 8);
+        } else {
+          break;
+        }
+      }
+
+      // Live panel: latest step only — avoids stacking every loop line in one bubble.
+      this.broadcastToAll(IPC.RESPONSE_CHUNK, { text: iterText, accumulated: iterText });
+
+      const willContinueLoop =
+        !!this.lastDomResult &&
+        multiStep &&
+        iteration < MAX_AGENT_ITERATIONS &&
+        !this.pendingPipelineAbort &&
+        !this.pendingConfirmation;
+
+      // TTS: brief = one phrase per step; normal = speak once when the turn finishes.
+      const shouldSpeak =
+        iterText.trim() &&
+        (this.briefMode ? true : !willContinueLoop);
+      if (shouldSpeak) {
+        if (this.briefMode) {
+          this.enqueueTTS(iterText);
+          this.briefSpokenThisIter = true;
+        } else {
+          this.enqueueTTS(iterText);
+        }
+      }
+
+      aggregatedText = this.appendAggregatedLine(aggregatedText, iterText);
+      this.aggregatedResponseText = aggregatedText;
+      console.log(
+        `[Agent] iter=${iteration} done model=${this.currentModel} ` +
+        `spokenChars=${iterText.length} ttsQueue=${this.ttsChunkQueue.length}`,
+      );
+
       if (this.pendingPipelineAbort || this.pendingConfirmation) break;
 
-      // Decide whether to continue the loop:
-      // - lastDomResult set => a tool fired during this iteration → continue
-      // - else                 → we're done
       if (!this.lastDomResult) break;
 
-      // Page settle delay (navigation + JS hydration take a beat)
-      await new Promise((r) => setTimeout(r, this.lastDomResult?.tool === 'navigate' ? 1500 : 700));
+      if (!multiStep) {
+        console.log('[Agent] Single-step command — stopping after first tool');
+        break;
+      }
 
-      // Subsequent iterations are framed as "Continue." so Claude doesn't
-      // re-explain the original goal; the result of the prev tool steers him.
-      currentUserMessage = 'Continue.';
+      const settleMs =
+        this.lastDomResult?.tool === 'navigate' ? 2200
+        : this.lastDomResult?.tool === 'scroll' ? 120
+        : this.lastDomResult?.tool === 'click' ? 1000
+        : 700;
+      await new Promise((r) => setTimeout(r, settleMs));
+
+      const lastTool = this.lastDomResult?.tool ?? 'none';
+      currentUserMessage = `Continue. Last action: ${lastTool}. Goal: ${transcript.slice(0, 120)}`;
     }
     } finally {
-      // Always flip ttsAllQueued so the processor can finalize, no matter
-      // how the loop exited (abort, error, confirmation pause, etc.).
-      // Without this, a half-played TTS queue can leave the processor stuck
-      // polling forever and the user never hears anything.
-      this.ttsAllQueued = true;
-      if (this.ttsChunkQueue.length > 0 && !this.ttsProcessorPromise) {
-        this.ttsProcessorPromise = this.runTTSProcessor();
-      }
+      clearTimeout(pipelineDeadline);
+      this.inAgentLoop = false;
+      this.sealTTSPlayback();
     }
 
-    // Persist the FINAL assistant text (concatenation of all iter texts)
-    if (aggregatedText) {
-      this.conversationStore.addMessage('assistant', aggregatedText);
-      this.conversationHistory.push({ role: 'assistant', content: aggregatedText });
+    const panelReply = formatPanelReply(aggregatedText, multiStep);
+
+    // Persist one compact assistant reply per user turn
+    if (panelReply) {
+      this.conversationStore.addMessage('assistant', panelReply);
+      this.conversationHistory.push({ role: 'assistant', content: panelReply });
     }
     const maxEntries = DUXY_CONFIG.maxConversationHistory * 2;
     if (this.conversationHistory.length > maxEntries) {
@@ -739,11 +1000,11 @@ export class CompanionManager {
     }
     this.broadcastToAll(IPC.RESPONSE_COMPLETE);
 
-    if (this.pendingPipelineAbort || !aggregatedText.trim()) {
+    if (this.pendingPipelineAbort || !panelReply.trim()) {
       this.setState('idle');
       this.overlayManager.hideAll();
     }
-    // State stays 'responding' until renderer fires TTS_COMPLETE (handled in initialize())
+    // Otherwise state stays 'responding' until renderer fires TTS_COMPLETE.
   }
 
   private setState(state: VoiceState): void {
@@ -751,21 +1012,15 @@ export class CompanionManager {
     this.state = state;
     console.log(`[CompanionManager] State → ${state}`);
     this.broadcastToAll(IPC.VOICE_STATE_CHANGED, { state });
-    // Phase 1C: show the numbered chrome badges in the browser only while
-    // Huncho is actively listening/thinking/speaking, so they don't litter
-    // the page during normal browsing.
+    // Sync voice-state chrome (waveform / spinner) to the in-page diamond.
+    this.browser?.setVoiceState(state);
+    // Numbered badges stay hidden — Claude uses the internal element map only.
     if (this.browser) {
       const wasActive = prev !== 'idle';
       const isActive = state !== 'idle';
       if (isActive !== wasActive) {
-        this.browser.setBadgesVisible(isActive).catch(() => { /* non-fatal */ });
         if (isActive) {
-          // Re-promote the diamond overlay whenever Huncho wakes up — the
-          // browser surface may have taken focus while idle.
           this.overlayManager.bringToFront();
-          // Start the heartbeat — while non-idle, snap the overlay back on
-          // top frequently so a scroll/click-induced z-order drop recovers
-          // before it's perceptible. The promote is cheap (no toggle/flicker).
           if (!this.overlayHeartbeatInterval) {
             this.overlayHeartbeatInterval = setInterval(() => {
               this.overlayManager.bringToFront();
@@ -800,8 +1055,9 @@ export class CompanionManager {
     // before Electron's globalShortcut fires. Register before-input-event as a fallback.
     const wc = bs?.getWebContents();
     if (wc) {
-      wc.on('before-input-event', (_event, input) => {
+      wc.on('before-input-event', (event, input) => {
         if (input.type === 'keyDown' && input.control && !input.alt && !input.shift && !input.meta && input.key.toLowerCase() === 'h') {
+          event.preventDefault();
           this.hotkeyMonitor.handleHotkey();
         }
       });
