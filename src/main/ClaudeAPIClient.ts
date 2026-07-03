@@ -41,8 +41,9 @@ export interface ToolUseEvent {
   input: Record<string, unknown>;
 }
 
-// Regex to find [POINT:x,y:description:screenN] tags
-const POINT_TAG_REGEX = /\[POINT:(\d+),(\d+):([^:]+):screen(\d+)\]/g;
+// Matches any [POINT:...] tag regardless of shape — models emit sloppy variants,
+// so stripping must be lenient (parsing is handled separately in processCursorTags).
+const POINT_TAG_REGEX = /\[POINT:[^\]]*\]/g;
 
 export class ClaudeAPIClient extends EventEmitter {
   private currentAbortController: AbortController | null = null;
@@ -167,7 +168,15 @@ export class ClaudeAPIClient extends EventEmitter {
               // Check for cursor point tags in the accumulated text
               this.processCursorTags(fullText);
 
-              this.emit('textChunk', { chunk, accumulated: fullText.replace(/\[POINT:\d+,\d+:[^:]+:screen\d+\]/g, '').trimEnd() });
+              // Strip complete POINT tags (any shape) plus a trailing partial tag
+              // still mid-stream, so raw tag text never flashes in the panel.
+              this.emit('textChunk', {
+                chunk,
+                accumulated: fullText
+                  .replace(/\[POINT:[^\]]*\]/g, '')
+                  .replace(/\[POINT:[^\]]*$/, '')
+                  .trimEnd(),
+              });
             } else if (
               event.type === 'content_block_start' &&
               event.content_block?.type === 'tool_use'
@@ -228,8 +237,13 @@ export class ClaudeAPIClient extends EventEmitter {
   private _currentToolUse: { id: string; name: string; inputBuf: string } | null = null;
 
   private processCursorTags(fullText: string): void {
-    // Always scan full accumulated text — avoids missing tags split across chunks
-    const regex = /\[POINT:(\d+),(\d+):([^:]+):screen(\d+)\]/g;
+    // Always scan full accumulated text — avoids missing tags split across chunks.
+    // LENIENT parse: models emit sloppy variants like [POINT:353:Images:] (no y,
+    // no screen) or stuff a URL where coords go. Well-formed tags fly with real
+    // coords; sloppy-but-labeled tags fly with 0,0 and rely on label-snap in the
+    // dom agent to find the element. Only a complete closed tag is scanned —
+    // partial tags still streaming are left for the next chunk.
+    const regex = /\[POINT:([^\]]*)\]/g;
     let match;
 
     while ((match = regex.exec(fullText)) !== null) {
@@ -237,13 +251,36 @@ export class ClaudeAPIClient extends EventEmitter {
       if (this._firedTags.has(key)) continue; // already emitted
       this._firedTags.add(key);
 
+      const body = match[1];
+
+      const coordMatch = body.match(/(\d+)\s*,\s*(\d+)/);
+      const screenMatch = body.match(/screen\s*(\d+)/i);
+
+      // Label = the segments that aren't coords, screenN, or URLs
+      const label = body
+        .split(':')
+        .map((s) => s.trim())
+        .filter((s) =>
+          s.length > 0 &&
+          !/^\d+\s*,\s*\d+$/.test(s) &&
+          !/^\d+$/.test(s) &&
+          !/^screen\s*\d+$/i.test(s) &&
+          !/^https?$/i.test(s) &&
+          !/^\/\//.test(s) &&
+          !/\.\w{2,}/.test(s.replace(/\s/g, '')) // skip URL-ish segments (contains dot-tld)
+        )
+        .join(' ')
+        .trim();
+
+      if (!label && !coordMatch) continue; // nothing usable — tag is stripped from display anyway
+
       const event: CursorPointEvent = {
-        x: parseInt(match[1], 10),
-        y: parseInt(match[2], 10),
-        label: match[3],
-        displayIndex: parseInt(match[4], 10),
+        x: coordMatch ? parseInt(coordMatch[1], 10) : 0,
+        y: coordMatch ? parseInt(coordMatch[2], 10) : 0,
+        label: label || 'here',
+        displayIndex: screenMatch ? parseInt(screenMatch[1], 10) : 99,
       };
-      console.log(`[ClaudeAPIClient] Cursor point: screen${event.displayIndex} (${event.x}, ${event.y}) — ${event.label}`);
+      console.log(`[ClaudeAPIClient] Cursor point (lenient): screen${event.displayIndex} (${event.x}, ${event.y}) — "${event.label}" [raw: ${match[0].slice(0, 60)}]`);
       this.emit('cursorPoint', event);
     }
   }

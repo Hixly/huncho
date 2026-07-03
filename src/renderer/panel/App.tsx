@@ -124,7 +124,7 @@ export const App: React.FC = () => {
   const [pendingUser, setPendingUser] = useState('');
   const [streamText, setStreamText] = useState('');
   const [audioLevel, setAudioLevel] = useState(0);
-  const [currentModel, setCurrentModel] = useState('claude-sonnet-4-5');
+  const [currentModel, setCurrentModel] = useState('gemini-2.5-flash');
   const [briefMode, setBriefMode] = useState(false);
   const [quitHover, setQuitHover] = useState(false);
   const [minHover, setMinHover] = useState(false);

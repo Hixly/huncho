@@ -35,6 +35,7 @@
     "vitest": "^4.1.8"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
     "msedge-tts": "^2.0.4",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",

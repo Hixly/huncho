@@ -158,7 +158,10 @@ window.electronAPI.onTtsPlayAudio(({ audioBase64 }) => {
 });
 
 window.electronAPI.onTtsStop(() => {
-  // Hard stop — clear queue and kill current playback immediately
+  // Hard stop — clear queue and kill current playback immediately.
+  // Also cancel speechSynthesis: the fallback voice path speaks through it
+  // and is NOT tracked by ttsAudioQueue, so without this an interrupt (or a
+  // new listen) leaves Huncho talking over the user.
   ttsAudioQueue.length = 0;
   ttsAllSent = false;
   ttsPlaying = false;
@@ -167,6 +170,7 @@ window.electronAPI.onTtsStop(() => {
     currentAudioEl.src = '';
     currentAudioEl = null;
   }
+  speechSynthesis.cancel();
   console.log('[Panel] TTS stopped by interrupt');
 });
 

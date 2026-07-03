@@ -1,5 +1,6 @@
 import { app, BrowserWindow, session, ipcMain } from 'electron';
 import * as path from 'path';
+import * as fs from 'fs';
 import { IPC } from '../shared/ipc-types';
 import { DUXY_CONFIG } from './config';
 import { TrayManager } from './TrayManager';
@@ -7,6 +8,25 @@ import { OverlayManager } from './OverlayManager';
 import { GlobalHotkeyMonitor } from './GlobalHotkeyMonitor';
 import { CompanionManager } from './CompanionManager';
 import { MainWindow } from './MainWindow';
+
+// Load huncho/.env into process.env (no dotenv dependency). Values already in
+// the environment win. Used for GEMINI_API_KEY and any future local secrets.
+(() => {
+  try {
+    const envPath = path.join(app.getAppPath(), '.env');
+    if (!fs.existsSync(envPath)) return;
+    for (const line of fs.readFileSync(envPath, 'utf-8').split(/\r?\n/)) {
+      const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+      if (!m || line.trim().startsWith('#')) continue;
+      const key = m[1];
+      const value = m[2].replace(/^["']|["']$/g, '');
+      if (!(key in process.env)) process.env[key] = value;
+    }
+    console.log('[Huncho] Loaded .env');
+  } catch (err) {
+    console.warn('[Huncho] Failed to load .env:', err);
+  }
+})();
 
 // Quit handler — registered early so it works regardless of init state
 ipcMain.on('DUXY_QUIT', () => {

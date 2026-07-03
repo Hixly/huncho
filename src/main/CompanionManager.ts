@@ -5,6 +5,7 @@ import { GlobalHotkeyMonitor } from './GlobalHotkeyMonitor';
 import { ScreenCaptureManager, ScreenshotInfo } from './ScreenCaptureManager';
 import { AudioRecorder } from './AudioRecorder';
 import { ClaudeAPIClient, ConversationMessage, CursorPointEvent } from './ClaudeAPIClient';
+import { GeminiAPIClient } from './GeminiAPIClient';
 import { ElevenLabsTTSClient } from './ElevenLabsTTSClient';
 import { EdgeTTSClient } from './EdgeTTSClient';
 import { OverlayManager } from './OverlayManager';
@@ -33,6 +34,7 @@ export class CompanionManager {
   private screenCapture: ScreenCaptureManager;
   private audioRecorder: AudioRecorder;
   private claudeClient: ClaudeAPIClient;
+  private geminiClient: GeminiAPIClient;
   private ttsClient: ElevenLabsTTSClient;
   private edgeTTS: EdgeTTSClient;
   private overlayManager: OverlayManager;
@@ -61,6 +63,10 @@ export class CompanionManager {
   // runPipeline awaits these before checking lastDomResult to decide whether
   // to continue (so the loop sees a tool fired even if dispatchTool is slow).
   private inFlightDispatches: Promise<void>[] = [];
+
+  // Tools executed during the current turn — used to detect a fully dead turn
+  // (no speech AND no action) so Huncho can say so instead of going silent.
+  private toolsRanThisTurn = 0;
 
   // Text accumulated across all agent-loop iterations for the current turn —
   // used to keep the panel's streaming chat display continuous instead of
@@ -107,6 +113,7 @@ export class CompanionManager {
     this.screenCapture = new ScreenCaptureManager();
     this.audioRecorder = new AudioRecorder();
     this.claudeClient = new ClaudeAPIClient();
+    this.geminiClient = new GeminiAPIClient();
     this.ttsClient = new ElevenLabsTTSClient();
     this.edgeTTS = new EdgeTTSClient();
     this.conversationStore = new ConversationStore();
@@ -136,12 +143,19 @@ export class CompanionManager {
     // Wire up Web Speech API transcript callback from AudioRecorder
     this.audioRecorder.setTranscriptReadyCallback(async (transcript: string) => {
       console.log(`[CompanionManager] Transcript received from renderer: "${transcript}"`);
+      // Cancel the no-transcript watchdog NOW — without this it fires mid-
+      // pipeline on slow LLM turns and silently resets state to idle (the
+      // "Huncho just never answered" bug).
+      if (this.transcriptTimeoutId) {
+        clearTimeout(this.transcriptTimeoutId);
+        this.transcriptTimeoutId = null;
+      }
       this.broadcastToAll(IPC.TRANSCRIPT_UPDATE, { transcript, isFinal: true });
       if (this.state !== 'listening' && this.state !== 'processing') {
         // Stuck mid-response from a prior turn — recover so new commands aren't dropped.
         if (this.state === 'responding') {
           console.warn('[CompanionManager] Recovering stuck responding state for new transcript');
-          this.claudeClient.cancel();
+          this.cancelAllEngines();
           this.ttsChunkQueue = [];
           this.ttsProcessorPromise = null;
           this.ttsAllQueued = true;
@@ -177,10 +191,12 @@ export class CompanionManager {
       this.runPipeline(transcript);
     });
 
-    // Wire up Claude streaming events. For agent-loop iterations 2+, we
-    // present the panel with the AGGREGATED text (prev iters + this iter) so
-    // the chat display stays continuous rather than resetting per iter.
-    this.claudeClient.on('textChunk', ({ chunk, accumulated }: { chunk: string; accumulated: string }) => {
+    // Wire up engine streaming events — both engines (Claude via the worker,
+    // Gemini direct) expose the same event surface, so wiring is shared.
+    // For agent-loop iterations 2+, we present the panel with the AGGREGATED
+    // text (prev iters + this iter) so the chat display stays continuous.
+    for (const engine of [this.claudeClient, this.geminiClient]) {
+    engine.on('textChunk', ({ chunk, accumulated }: { chunk: string; accumulated: string }) => {
       const cleanAccumulated = sanitizeForUser(accumulated);
       const cleanChunk = cleanAccumulated.slice(this.lastCleanAccumulated.length) || sanitizeForUser(chunk);
       this.lastCleanAccumulated = cleanAccumulated;
@@ -196,7 +212,7 @@ export class CompanionManager {
     });
 
     // Route POINT tags to the in-page diamond (browser) and/or desktop overlay.
-    this.claudeClient.on('cursorPoint', (event: CursorPointEvent) => {
+    engine.on('cursorPoint', (event: CursorPointEvent) => {
       const meta = this.lastBrowserScreenshotMeta;
       const browserPoint =
         this.browser &&
@@ -237,7 +253,7 @@ export class CompanionManager {
       }
     });
 
-    this.claudeClient.on('toolUse', (event: { id: string; name: string; input: Record<string, unknown> }) => {
+    engine.on('toolUse', (event: { id: string; name: string; input: Record<string, unknown> }) => {
       console.log(
         `[Agent] tool=${event.name} model=${this.currentModel} input=${JSON.stringify(event.input).slice(0, 200)}`,
       );
@@ -246,6 +262,7 @@ export class CompanionManager {
       });
       this.inFlightDispatches.push(p);
     });
+    } // end engine wiring loop
 
     // Wire up hotkey monitor
     this.hotkeyMonitor.on('pttPress', () => this.handlePttPress());
@@ -376,7 +393,7 @@ export class CompanionManager {
     // This avoids capturing silence/breath as a spurious recording.
     if (this.state === 'processing' || this.state === 'responding') {
       this.pendingPipelineAbort = true;
-      this.claudeClient.cancel();
+      this.cancelAllEngines();
       this.ttsChunkQueue = [];
       const panelWin = this.trayManager.getPanelWindow();
       if (panelWin && !panelWin.isDestroyed()) {
@@ -389,6 +406,16 @@ export class CompanionManager {
       this.hotkeyMonitor.resetPttState();
       console.log('[CompanionManager] Response interrupted — press Alt+D to ask a follow-up');
       return;
+    }
+
+    // Catch-all: if state tracking ever thinks we're idle while the renderer
+    // is still voicing (e.g. the untracked speechSynthesis fallback), starting
+    // a new listen must silence Huncho first — never talk over the user.
+    {
+      const panelWin = this.trayManager.getPanelWindow();
+      if (panelWin && !panelWin.isDestroyed()) {
+        panelWin.webContents.send(IPC.TTS_STOP);
+      }
     }
 
     this.setState('listening');
@@ -603,6 +630,7 @@ export class CompanionManager {
       console.warn(`[CompanionManager] Tool ${event.name} called but no BrowserSurface attached`);
       return;
     }
+    this.toolsRanThisTurn++;
     const { name, input } = event;
 
     switch (name) {
@@ -663,11 +691,14 @@ export class CompanionManager {
         const submit = input.submit === true;
         const reason = typeof input.reason === 'string' ? input.reason : '';
         if (!Number.isFinite(n)) return console.warn('[CompanionManager] type_text called without a valid n');
-        // Submission on a form whose surrounding text suggests irreversibility → confirm.
-        if (submit && isDangerousAction(reason, text)) {
-          const map = await this.browser.getElementMap();
-          const target = map.find((e) => e.n === n);
-          const elementText = target?.text ?? '';
+        // Confirm only when the FIELD ITSELF looks irreversible (payment,
+        // password, checkout, ...). Do NOT scan the model's reason string —
+        // it always contains "submit" for search boxes and was blocking
+        // every ordinary Google search behind a confirmation prompt.
+        const map = await this.browser.getElementMap();
+        const target = map.find((e) => e.n === n);
+        const elementText = target?.text ?? '';
+        if (submit && isDangerousAction(elementText)) {
           this.pendingConfirmation = { tool: 'type_text', n, text, submit, elementText, reason };
           const prompt = `About to type "${text}" and submit. Want me to go ahead?`;
           console.log(`[CompanionManager] type_text(${n}) -> CONFIRMATION REQUIRED`);
@@ -794,6 +825,7 @@ export class CompanionManager {
     this.resetTTSStream();
     this.aggregatedResponseText = '';
     this.lastCleanAccumulated = '';
+    this.toolsRanThisTurn = 0;
     this.inAgentLoop = true;
 
     // Persist the user turn once up front; the assistant turn accumulates across
@@ -814,7 +846,7 @@ export class CompanionManager {
       if (this.state === 'processing' || this.state === 'responding') {
         console.warn('[CompanionManager] Pipeline timeout — aborting stuck turn');
         this.pendingPipelineAbort = true;
-        this.claudeClient.cancel();
+        this.cancelAllEngines();
       }
     }, 90000);
 
@@ -888,7 +920,7 @@ export class CompanionManager {
 
       let iterText = '';
       try {
-        const result = await this.claudeClient.sendMessage({
+        const result = await this.activeEngine().sendMessage({
           transcript: browserContextText ? `${browserContextText}\n\n${currentUserMessage}` : currentUserMessage,
           screenshotBase64List: screenshotList,
           conversationHistory: this.conversationHistory,
@@ -987,6 +1019,16 @@ export class CompanionManager {
       this.sealTTSPlayback();
     }
 
+    // Dead-turn guard: the model produced no speech AND no action (e.g. an
+    // empty Gemini candidate that survived the client-side retry). Never end
+    // in silence — tell Hix it flopped so he knows to re-ask, not wait.
+    if (!aggregatedText.trim() && this.toolsRanThisTurn === 0 && !this.pendingPipelineAbort) {
+      aggregatedText = "That one came back empty — run it by me again.";
+      this.broadcastToAll(IPC.RESPONSE_CHUNK, { text: aggregatedText, accumulated: aggregatedText });
+      this.enqueueTTS(aggregatedText);
+      this.sealTTSPlayback();
+    }
+
     const panelReply = formatPanelReply(aggregatedText, multiStep);
 
     // Persist one compact assistant reply per user turn
@@ -1005,6 +1047,17 @@ export class CompanionManager {
       this.overlayManager.hideAll();
     }
     // Otherwise state stays 'responding' until renderer fires TTS_COMPLETE.
+  }
+
+  /** Engine routing: gemini-* models go direct to Gemini, everything else to the Claude worker. */
+  private activeEngine(): ClaudeAPIClient | GeminiAPIClient {
+    return this.currentModel.startsWith('gemini') ? this.geminiClient : this.claudeClient;
+  }
+
+  /** Abort any in-flight request on BOTH engines (interrupt / stuck recovery / shutdown). */
+  private cancelAllEngines(): void {
+    this.claudeClient.cancel();
+    this.geminiClient.cancel();
   }
 
   private setState(state: VoiceState): void {
@@ -1097,7 +1150,7 @@ export class CompanionManager {
 
   destroy(): void {
     this.hotkeyMonitor.stop();
-    this.claudeClient.cancel();
+    this.cancelAllEngines();
     if (this.transcriptTimeoutId) {
       clearTimeout(this.transcriptTimeoutId);
       this.transcriptTimeoutId = null;

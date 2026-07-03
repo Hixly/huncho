@@ -169,6 +169,12 @@ export const DOM_AGENT_SCRIPT = `
     CURSOR_STATE.current.y = CURSOR_STATE.target.y;
   }
 
+  // Failsafe: TTS_COMPLETE normally triggers the return flight, but if audio
+  // errors out that signal never arrives — without this the diamond sits at
+  // the target until the user's next prompt.
+  const AT_TARGET_MAX_MS = 8000;
+  let atTargetSince = 0;
+
   function applyCursorFrame(wrap) {
     if (FLY_STATE.mode === 'flying') {
       FLY_STATE.progress = Math.min(1, FLY_STATE.progress + 0.05);
@@ -177,9 +183,14 @@ export const DOM_AGENT_SCRIPT = `
       CURSOR_STATE.current.y = FLY_STATE.startY + (FLY_STATE.endY - FLY_STATE.startY) * t;
       if (FLY_STATE.progress >= 1) {
         FLY_STATE.mode = 'atTarget';
+        atTargetSince = Date.now();
         updatePointLabel(FLY_STATE.label);
       }
-    } else if (FLY_STATE.mode !== 'atTarget') {
+    } else if (FLY_STATE.mode === 'atTarget') {
+      if (Date.now() - atTargetSince > AT_TARGET_MAX_MS) {
+        returnCursorToFollow();
+      }
+    } else {
       CURSOR_STATE.current.x += (CURSOR_STATE.target.x - CURSOR_STATE.current.x) * CURSOR_FOLLOW_SPEED;
       CURSOR_STATE.current.y += (CURSOR_STATE.target.y - CURSOR_STATE.current.y) * CURSOR_FOLLOW_SPEED;
     }
@@ -421,15 +432,100 @@ export const DOM_AGENT_SCRIPT = `
     return true;
   }
 
+  // Occlusion check (mined from browser-use's isTopElement / Stagehand):
+  // an element only counts as interactive if it actually receives the click
+  // at its center point — i.e. it isn't buried under a modal, dropdown,
+  // cookie banner, or sticky header. Without this the model gets offered
+  // elements that silently swallow clicks.
+  function isTopElement(el) {
+    const r = el.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    if (cx < 0 || cy < 0 || cx > window.innerWidth || cy > window.innerHeight) return true; // off-center: give benefit of the doubt
+    // Resolve through shadow roots to the deepest hit
+    let hit = document.elementFromPoint(cx, cy);
+    while (hit && hit.shadowRoot) {
+      const deeper = hit.shadowRoot.elementFromPoint(cx, cy);
+      if (!deeper || deeper === hit) break;
+      hit = deeper;
+    }
+    if (!hit) return false;
+    if (hit === el || el.contains(hit) || hit.contains(el)) return true;
+    // Our own overlay bits never count as occluders
+    if (hit.id === CURSOR_ID || (hit.classList && hit.classList.contains(BADGE_CLASS))) return true;
+    return false;
+  }
+
+  // Accessible-name computation (mined from Stagehand's a11y approach):
+  // aria-label → aria-labelledby → placeholder → value → alt/title on child
+  // imgs → own text. Gives the model far better labels for icon buttons.
   function getText(el) {
     const ariaLabel = el.getAttribute && el.getAttribute('aria-label');
     if (ariaLabel) return ariaLabel.trim().slice(0, 80);
+    const labelledBy = el.getAttribute && el.getAttribute('aria-labelledby');
+    if (labelledBy) {
+      const parts = labelledBy.split(/\\s+/).map((id) => {
+        const ref = document.getElementById(id);
+        return ref ? (ref.innerText || ref.textContent || '').trim() : '';
+      }).filter(Boolean);
+      if (parts.length) return parts.join(' ').replace(/\\s+/g, ' ').slice(0, 80);
+    }
     const placeholder = el.getAttribute && el.getAttribute('placeholder');
     if (placeholder) return placeholder.trim().slice(0, 80);
     const val = el.value || '';
     if (val) return ('value: ' + val).slice(0, 80);
     const text = (el.innerText || el.textContent || '').trim().replace(/\\s+/g, ' ');
-    return text.slice(0, 80);
+    if (text) return text.slice(0, 80);
+    // Icon-only buttons: borrow alt/title/aria-label from descendants
+    const img = el.querySelector && el.querySelector('img[alt], svg[aria-label], [title]');
+    if (img) {
+      const alt = img.getAttribute('alt') || img.getAttribute('aria-label') || img.getAttribute('title');
+      if (alt) return alt.trim().slice(0, 80);
+    }
+    const title = el.getAttribute && el.getAttribute('title');
+    if (title) return title.trim().slice(0, 80);
+    return '';
+  }
+
+  // Candidate collection (mined from browser-use): pierce shadow roots and
+  // additionally pick up cursor:pointer elements that carry click handlers
+  // but no interactive tag/role (Google-style styled-div "buttons").
+  function collectCandidates() {
+    const out = [];
+    const seen = new Set();
+    function addAll(root) {
+      let list;
+      try { list = root.querySelectorAll(INTERACTIVE_SELECTOR); } catch (e) { return; }
+      list.forEach((el) => { if (!seen.has(el)) { seen.add(el); out.push(el); } });
+      // Recurse into shadow roots
+      let walkList;
+      try { walkList = root.querySelectorAll('*'); } catch (e) { return; }
+      walkList.forEach((el) => { if (el.shadowRoot) addAll(el.shadowRoot); });
+    }
+    addAll(document);
+    // cursor:pointer sweep — viewport-limited and capped for perf
+    let processed = 0;
+    const CAP = 1200;
+    const sweep = document.querySelectorAll('div,span,li,td,img,svg');
+    for (let i = 0; i < sweep.length && processed < CAP; i++) {
+      const el = sweep[i];
+      if (seen.has(el)) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width < 8 || r.height < 8) continue;
+      if (r.bottom < 0 || r.top > window.innerHeight || r.right < 0 || r.left > window.innerWidth) continue;
+      processed++;
+      const cs = window.getComputedStyle(el);
+      if (cs.cursor !== 'pointer') continue;
+      // Skip if an already-collected interactive ancestor covers this
+      if (el.closest && el.closest(INTERACTIVE_SELECTOR)) continue;
+      // Skip wrappers whose interactive child is already collected
+      let hasCollectedChild = false;
+      try { hasCollectedChild = !!el.querySelector(INTERACTIVE_SELECTOR); } catch (e) { /* noop */ }
+      if (hasCollectedChild) continue;
+      seen.add(el);
+      out.push(el);
+    }
+    return out;
   }
 
   function getType(el) {
@@ -446,23 +542,39 @@ export const DOM_AGENT_SCRIPT = `
 
   // --- Numbering + badges -------------------------------------------------
   let lastMap = [];
+  // STABLE numbering: once an element gets a number it keeps it for the life
+  // of the page. Rescans only assign fresh numbers to new elements. Without
+  // this, every scroll/mutation renumbered the whole page, so the number the
+  // model saw in its map could point at a DIFFERENT element by click time —
+  // the root cause of "clicked All three times, nothing happened".
+  let nextStableId = 1;
 
   function numberAll() {
     installStyles();
     removeBadges();
-    const all = Array.from(document.querySelectorAll(INTERACTIVE_SELECTOR));
-    const visible = all.filter(isVisible);
-    // Sort visually: top to bottom, then left to right
+    const all = collectCandidates();
+    const visible = all.filter((el) => isVisible(el) && isTopElement(el));
+    // Sort visually: top to bottom, then left to right (map order only —
+    // numbers themselves are stable, not positional)
     visible.sort((a, b) => {
       const ra = a.getBoundingClientRect();
       const rb = b.getBoundingClientRect();
       if (Math.abs(ra.top - rb.top) > 12) return ra.top - rb.top;
       return ra.left - rb.left;
     });
+    // Advance the counter past any ids already on the page (survives script
+    // re-injection after SPA route swaps where old ids remain in the DOM).
+    document.querySelectorAll('[' + DATA_ATTR + ']').forEach((el) => {
+      const existing = parseInt(el.getAttribute(DATA_ATTR), 10);
+      if (Number.isFinite(existing) && existing >= nextStableId) nextStableId = existing + 1;
+    });
     const map = [];
-    visible.forEach((el, i) => {
-      const n = i + 1;
-      el.setAttribute(DATA_ATTR, String(n));
+    visible.forEach((el) => {
+      let n = parseInt(el.getAttribute(DATA_ATTR), 10);
+      if (!Number.isFinite(n)) {
+        n = nextStableId++;
+        el.setAttribute(DATA_ATTR, String(n));
+      }
       const r = el.getBoundingClientRect();
       const entry = {
         n,
@@ -518,11 +630,28 @@ export const DOM_AGENT_SCRIPT = `
       }, 80);
       return { ok: true, n, text: getText(target), href: dest };
     }
+    // Non-anchor path — full synthetic event sequence at the element's center
+    // (mined from browser-use/Stagehand): React, Google, and most component
+    // libraries attach handlers to pointerdown/mousedown, not just click, and
+    // many verify event coordinates. A bare el.click() silently no-ops there.
+    const rect = el.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const evInit = {
+      bubbles: true, cancelable: true, view: window, detail: 1,
+      clientX: cx, clientY: cy, button: 0, buttons: 1,
+    };
+    el.focus && el.focus();
+    el.dispatchEvent(new PointerEvent('pointerover', evInit));
+    el.dispatchEvent(new MouseEvent('mouseover', evInit));
+    el.dispatchEvent(new PointerEvent('pointerdown', evInit));
+    el.dispatchEvent(new MouseEvent('mousedown', evInit));
+    el.dispatchEvent(new PointerEvent('pointerup', { ...evInit, buttons: 0 }));
+    el.dispatchEvent(new MouseEvent('mouseup', { ...evInit, buttons: 0 }));
     if (typeof el.click === 'function') {
       el.click();
     } else {
-      const ev = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
-      el.dispatchEvent(ev);
+      el.dispatchEvent(new MouseEvent('click', { ...evInit, buttons: 0 }));
     }
     return { ok: true, n, text: getText(el) };
   }

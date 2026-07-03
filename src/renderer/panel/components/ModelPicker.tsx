@@ -7,8 +7,9 @@ interface ModelPickerProps {
 }
 
 const MODELS = [
-  { id: 'claude-sonnet-4-5', label: 'Sonnet', description: 'Fast & capable' },
-  { id: 'claude-opus-4-5', label: 'Opus', description: 'Most powerful' },
+  { id: 'gemini-2.5-flash', label: 'Flash', description: 'Gemini Flash — fast, cheap, great for browsing' },
+  { id: 'gemini-2.5-pro', label: 'Gemini Pro', description: 'Gemini Pro — most capable' },
+  { id: 'claude-sonnet-4-5', label: 'Sonnet', description: 'Claude fallback (via worker)' },
 ];
 
 export const ModelPicker: React.FC<ModelPickerProps> = ({ currentModel, onModelChange }) => {

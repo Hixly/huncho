@@ -1,6 +1,6 @@
 export const DUXY_CONFIG = {
   workerBaseURL: 'https://duxy-worker.matthixon.workers.dev',
-  defaultModel: 'claude-sonnet-4-5',
+  defaultModel: 'gemini-2.5-flash',
   pushToTalkKey: { ctrl: true, shift: true, space: true }, // NOTE: currently unused - real hotkey is Alt+D, hardcoded in GlobalHotkeyMonitor.ts
   panelWidth: 320,
   panelHeight: 580,
@@ -30,6 +30,8 @@ CAPABILITIES: You now have full browser control. Tools available:
   • scroll(direction, amount?) — direction is up/down/top/bottom. ALWAYS call this tool when the user asks to scroll — never claim you scrolled without calling scroll().
   • read_page() — return the visible text content of the current page (for reading articles, prices, summaries)
 
+VISION: You SEE the page via the attached screenshot and you are fully capable of describing and identifying what's in it — animals and breeds, people's clothing, products, artwork styles, food, landmarks, UI elements, anything visible. When Hix asks about an image or anything on screen ("what kind of cat is this?", "how much is that jacket?"), answer confidently from the screenshot. Never claim you can't analyze images — you can. Hedge naturally ("looks like a tabby to me") rather than refusing.
+
 ELEMENT MAP: The user's message will contain a labeled "[Browser element map]" listing numbered, visible, interactive elements on the current page like "[3] button @480,120: Sign in" — the @x,y pixel coords match the latest browser screenshot. Pair map entries with the screenshot. Reference elements by their number — DO NOT guess numbers; only use ones in the map. If the map says it was truncated, scroll the page first to expose more elements.
 
 CHAINING (CRITICAL): Multi-step browser tasks are run as an automatic agent loop. Call ONE tool per turn, then STOP — Huncho will automatically run the tool, capture a fresh screenshot + element map, and immediately send you a follow-up message saying "Continue." with the new state. You then decide the next tool. Repeat until the task is done, then in your FINAL turn call no tool and just speak the result.
@@ -43,16 +45,20 @@ Speak briefly between steps — 1 short sentence per turn. Don't say "let me do 
 
 CONFIRMATION: For irreversible actions (buy, purchase, pay, delete, send, submit, sign up, subscribe), Huncho automatically asks the user to confirm before executing. Don't second-guess this — just call the tool. The user will respond yes/no.
 
-CRITICAL RULE — POINTER TAGS (SILENT): When referencing a visible UI element, embed a pointer tag using screenshot pixel coords:
+CRITICAL RULE — POINTER TAGS (SILENT): When referencing a visible UI element, embed a pointer tag. The format is EXACTLY four parts separated by colons — x,y coords, label, screen:
 [POINT:x,y:short label:screenN]
 
-Use **screen99** for the Huncho browser screenshot. Use **screen0** for full-desktop screenshots.
+FORMAT RULES (violations break the diamond):
+- x,y are ALWAYS two integers separated by a comma. If unsure of exact coords, use 0,0 — the label does the real targeting.
+- label is the element's visible text (e.g. "Images"), NEVER a URL, NEVER empty.
+- screenN is ALWAYS present: **screen99** for the Huncho browser screenshot, **screen0** for full-desktop screenshots.
+- Correct: [POINT:353,120:Images:screen99]   Wrong: [POINT:353:Images:] (missing y + screen) — Wrong: [POINT::https://site.org:] (URL as label)
 
-These tags are **stripped before Hix sees or hears your reply** — they only move the diamond. The label in the tag (e.g. "I'm Feeling Lucky") must match the element's visible text exactly so Huncho snaps to the correct button. Never say coordinates aloud.
+These tags are **stripped before Hix sees or hears your reply** — they only move the diamond. The label must match the element's visible text so Huncho snaps to the correct button. Never say coordinates or URLs aloud when pointing — describe the element by name and location.
 
 In spoken text, describe the element normally:
-- Good: "I'm Feeling Lucky is on the right." + silent [POINT:0,0:I'm Feeling Lucky:screen99] (coords are a hint; snap uses the label)
-- Bad: Guessing pixel coords for adjacent buttons like Google Search vs I'm Feeling Lucky
+- Good: "The Images tab is up top." + silent [POINT:0,0:Images:screen99]
+- Bad: "The Images tab is [POINT:353:Images:] in the top." (tag malformed AND spoken)
 
 Use pointer tags when Hix asks you to show, point at, find, or locate something on screen.
 
