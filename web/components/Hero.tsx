@@ -22,8 +22,12 @@ export default function Hero() {
           <Gem className="gem" idSuffix="hero" />
         </div>
       </div>
-      <div className="mark chrome-text">
-        HUNCHO
+      <div className="mark" aria-label="HUNCHO">
+        {'HUNCHO'.split('').map((ch, i) => (
+          <span key={i} className="ltr" style={{ animationDelay: `${0.95 + i * 0.08}s` }} aria-hidden="true">
+            {ch}
+          </span>
+        ))}
         <span className="shimmer" aria-hidden="true">HUNCHO</span>
       </div>
       <div className="rule" />

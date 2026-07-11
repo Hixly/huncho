@@ -28,7 +28,8 @@ body::before {
 main { position: relative; z-index: 1; }
 
 /* ── HUD furniture ── */
-.corner { position: fixed; width: 34px; height: 34px; border: 1px solid var(--line); pointer-events: none; z-index: 40; }
+.corner { position: fixed; width: 34px; height: 34px; border: 1px solid var(--line); pointer-events: none; z-index: 40; animation: cornerIn 0.7s 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes cornerIn { from { opacity: 0; transform: scale(0.4); } to { opacity: 1; transform: scale(1); } }
 .c-tl { top: 22px; left: 22px; border-right: 0; border-bottom: 0; }
 .c-tr { top: 22px; right: 22px; border-left: 0; border-bottom: 0; }
 .c-bl { bottom: 52px; left: 22px; border-right: 0; border-top: 0; }
@@ -39,6 +40,12 @@ main { position: relative; z-index: 1; }
 }
 .e-left { left: 30px; top: 50%; transform: rotate(180deg) translateY(50%); writing-mode: vertical-rl; }
 .e-right { right: 30px; top: 50%; transform: translateY(-50%); writing-mode: vertical-rl; }
+.edge { animation: edgeIn 1.1s 1.9s ease both; }
+@keyframes edgeIn { from { opacity: 0; } to { opacity: 0.55; } }
+.hudbar {
+  animation: hudUp 0.7s 1.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes hudUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 .hudbar {
   position: fixed; left: 0; right: 0; bottom: 0; height: 34px; z-index: 40;
   display: flex; align-items: center; justify-content: space-between; padding: 0 26px;
@@ -69,29 +76,89 @@ section { padding: 120px 24px; max-width: 1080px; margin: 0 auto; }
 
 /* ── Hero ── */
 .hero { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 80px 24px 120px; }
-.core { position: relative; width: 220px; height: 220px; display: flex; align-items: center; justify-content: center; margin-bottom: 6px; animation: rise 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.core { position: relative; width: 220px; height: 220px; display: flex; align-items: center; justify-content: center; margin-bottom: 6px; }
 .ring { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; }
 .ring svg { width: 100%; height: 100%; overflow: visible; }
+/* Boot: rings spin up from nothing (boot anim on the svg, endless spin on the wrapper) */
 .r1 { animation: spin 26s linear infinite; }
 .r2 { inset: 24px; animation: spinRev 18s linear infinite; }
 .r3 { inset: 52px; animation: spin 40s linear infinite; opacity: 0.5; }
+.r1 svg { animation: ringIn 1s 0.1s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.r2 svg { animation: ringIn 1s 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.r3 svg { animation: ringIn 1s 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes ringIn {
+  from { opacity: 0; transform: scale(0.5) rotate(-120deg); }
+  to { opacity: 1; transform: scale(1) rotate(0deg); }
+}
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes spinRev { to { transform: rotate(-360deg); } }
-.gemwrap { position: relative; animation: breathe 4.5s ease-in-out infinite; }
+.gemwrap { position: relative; animation: breathe 4.5s 1.8s ease-in-out infinite; }
 @keyframes breathe { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-4px) scale(1.03); } }
-.gem { width: 44px; height: 70px; filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.14)) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3)); }
-.halo { position: absolute; inset: -34px; border-radius: 50%; pointer-events: none; background: radial-gradient(circle, rgba(120, 120, 130, 0.2) 0%, rgba(120, 120, 130, 0) 62%); animation: halo 4.5s ease-in-out infinite; }
+/* Boot: gem materializes — drops in blurred and over-bright, snaps to focus */
+.gem {
+  width: 44px; height: 70px;
+  animation: gemIn 1.1s 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes gemIn {
+  0% { opacity: 0; transform: translateY(-30px) scaleY(0.55); filter: blur(10px) brightness(3.2) drop-shadow(0 0 0 rgba(0, 0, 0, 0)); }
+  55% { opacity: 1; transform: translateY(2px) scaleY(1.04); filter: blur(0.5px) brightness(1.9) drop-shadow(0 10px 22px rgba(0, 0, 0, 0.14)); }
+  100% { opacity: 1; transform: translateY(0) scaleY(1); filter: blur(0) brightness(1) drop-shadow(0 10px 22px rgba(0, 0, 0, 0.14)) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3)); }
+}
+/* Boot: halo bursts once, then settles into the endless pulse */
+.halo {
+  position: absolute; inset: -34px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(120, 120, 130, 0.2) 0%, rgba(120, 120, 130, 0) 62%);
+  animation: haloBoot 1.2s 0.55s ease-out both, halo 4.5s 1.8s ease-in-out infinite;
+}
+@keyframes haloBoot {
+  0% { opacity: 0; transform: scale(0.2); }
+  45% { opacity: 1; transform: scale(1.35); }
+  100% { opacity: 0.55; transform: scale(1); }
+}
 @keyframes halo { 0%, 100% { opacity: 0.55; transform: scale(1); } 50% { opacity: 1; transform: scale(1.12); } }
-.mark { position: relative; font-family: var(--font-mark), serif; font-weight: 900; font-size: clamp(34px, 7vw, 52px); letter-spacing: 0.44em; line-height: 1; padding-left: 0.44em; animation: rise 0.9s 0.1s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
-.mark .shimmer { position: absolute; inset: 0; padding-left: 0.44em; background: linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.9) 50%, transparent 60%) no-repeat; background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; animation: shimmer 5.5s ease-in-out infinite; }
+.mark { position: relative; font-family: var(--font-mark), serif; font-weight: 900; font-size: clamp(34px, 7vw, 52px); letter-spacing: 0.44em; line-height: 1; padding-left: 0.44em; }
+/* Boot: wordmark decodes letter-by-letter (delays set inline per letter) */
+.mark .ltr {
+  display: inline-block;
+  background: var(--chrome);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  animation: ltrIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes ltrIn {
+  0% { opacity: 0; transform: translateY(14px) scaleY(1.5); filter: blur(9px); }
+  60% { opacity: 1; filter: blur(0.5px); }
+  100% { opacity: 1; transform: translateY(0) scaleY(1); filter: blur(0); }
+}
+/* Boot: scan line sweeps the wordmark while it decodes */
+.mark::before {
+  content: ''; position: absolute; top: -14%; bottom: -14%; width: 1px; left: 0;
+  background: linear-gradient(180deg, transparent, rgba(58, 58, 62, 0.65), transparent);
+  animation: scan 1.15s 0.9s cubic-bezier(0.3, 0, 0.4, 1) both;
+}
+@keyframes scan {
+  0% { left: -3%; opacity: 0; }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { left: 103%; opacity: 0; }
+}
+.mark .shimmer { position: absolute; inset: 0; padding-left: 0.44em; background: linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.9) 50%, transparent 60%) no-repeat; background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; animation: shimmer 5.5s 2s ease-in-out infinite; }
 @keyframes shimmer { 0%, 64% { background-position: 130% 0; } 88%, 100% { background-position: -40% 0; } }
-.hero .rule { margin: 26px 0; animation: rise 0.9s 0.18s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
-.tagline { font-size: clamp(26px, 4.6vw, 38px); font-weight: 200; letter-spacing: -0.02em; color: var(--ink-2); animation: rise 0.9s 0.26s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+/* Boot: rule draws outward from center */
+.hero .rule { margin: 26px 0; transform-origin: center; animation: ruleIn 0.8s 1.55s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes ruleIn { from { opacity: 0; transform: scaleX(0); } to { opacity: 1; transform: scaleX(1); } }
+.tagline { font-size: clamp(26px, 4.6vw, 38px); font-weight: 200; letter-spacing: -0.02em; color: var(--ink-2); animation: rise 0.9s 1.75s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .tagline em { font-style: normal; font-weight: 600; }
-.hero .sub { margin-top: 16px; font-size: 15px; line-height: 1.7; color: var(--mute); max-width: 460px; animation: rise 0.9s 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
-.cta { margin-top: 38px; display: inline-block; text-decoration: none; font-family: var(--font-mono), monospace; font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase; color: #f4f3ee; padding: 15px 34px; border: 1px solid #1a1a1e; background: linear-gradient(135deg, #34343e, #17171b 60%, #2a2a34); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 12px 28px rgba(20, 20, 24, 0.22); transition: transform 0.25s ease, box-shadow 0.25s ease; animation: rise 0.9s 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.hero .sub { margin-top: 16px; font-size: 15px; line-height: 1.7; color: var(--mute); max-width: 460px; animation: rise 0.9s 1.9s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.cta { margin-top: 38px; display: inline-block; text-decoration: none; font-family: var(--font-mono), monospace; font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase; color: #f4f3ee; padding: 15px 34px; border: 1px solid #1a1a1e; background: linear-gradient(135deg, #34343e, #17171b 60%, #2a2a34); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 12px 28px rgba(20, 20, 24, 0.22); transition: transform 0.25s ease, box-shadow 0.25s ease; animation: rise 0.9s 2.05s cubic-bezier(0.2, 0.8, 0.2, 1) both, ctaCharge 1.4s 2.5s ease-out; }
+/* Boot: CTA powers on with a one-time charge glow */
+@keyframes ctaCharge {
+  0% { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 12px 28px rgba(20, 20, 24, 0.22), 0 0 0 0 rgba(90, 90, 100, 0.5); }
+  60% { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 12px 28px rgba(20, 20, 24, 0.22), 0 0 0 9px rgba(90, 90, 100, 0); }
+  100% { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 12px 28px rgba(20, 20, 24, 0.22), 0 0 0 0 rgba(90, 90, 100, 0); }
+}
 .cta:hover { transform: translateY(-2px); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 18px 36px rgba(20, 20, 24, 0.3); }
-.hero .meta { margin-top: 22px; font-family: var(--font-mono), monospace; font-size: 9.5px; letter-spacing: 0.3em; color: var(--mute); text-transform: uppercase; animation: rise 0.9s 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.hero .meta { margin-top: 22px; font-family: var(--font-mono), monospace; font-size: 9.5px; letter-spacing: 0.3em; color: var(--mute); text-transform: uppercase; animation: rise 0.9s 2.2s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ── Capabilities ── */
