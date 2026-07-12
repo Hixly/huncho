@@ -23,6 +23,15 @@ import { sanitizeForUser } from './personality/sanitize-output';
 import { enforceBriefResponse } from './personality/enforce-brief';
 import { buildClickLabelQueries } from './tools/resolve-click-target';
 import { formatPanelReply, transcriptImpliesMultiStep } from './tools/transcript-intent';
+import {
+  ActionCache,
+  CachedStep,
+  CachedTool,
+  normalizeIntent,
+  originOf,
+  resolveFingerprint,
+  shouldCache,
+} from './tools/action-cache';
 
 export class CompanionManager {
   private state: VoiceState = 'idle';
@@ -44,6 +53,19 @@ export class CompanionManager {
   private conversationStore: ConversationStore;
 
   private browser: BrowserSurface | null = null;
+
+  // P3 — Action cache. Records model-driven tool sequences keyed by normalized
+  // transcript so repeat commands replay instantly without an LLM round-trip.
+  private actionCache: ActionCache | null = null;
+  // Steps executed during the CURRENT model-driven run, accumulated in
+  // dispatchTool. null while replaying (so replay's own tool calls aren't
+  // re-recorded) or when caching is disabled.
+  private currentRunSteps: CachedStep[] | null = null;
+  // Set true if any step this run hit a confirmation-gated action — such runs
+  // are never cached.
+  private runHadConfirmation = false;
+  // URL the current run started on (for start-page matching on replay).
+  private runStartUrl = '';
 
   // Phase 1C — Eyes + Hands. Pending action that needs verbal confirmation
   // before Huncho will execute it (Buy, Delete, Send, etc.). Cleared on the
@@ -141,12 +163,19 @@ export class CompanionManager {
     this.edgeTTS = new EdgeTTSClient();
     this.conversationStore = new ConversationStore();
     this.personalityStore = new PersonalityStore();
+
+    // Action cache persists to userData so replays survive app restarts.
+    if (DUXY_CONFIG.actionCacheEnabled) {
+      const filePath = path.join(app.getPath('userData'), 'action-cache.json');
+      this.actionCache = new ActionCache({ filePath });
+    }
   }
 
   async initialize(): Promise<void> {
     // Load persisted conversation history
     this.conversationStore.load();
     this.personalityStore.load();
+    this.actionCache?.load();
     this.conversationHistory = this.conversationStore.toClaudeHistory(DUXY_CONFIG.maxConversationHistory);
     console.log(`[CompanionManager] Restored ${this.conversationHistory.length} messages into Claude context`);
 
@@ -211,6 +240,9 @@ export class CompanionManager {
         return;
       }
       this.personalityStore.tryLearnFromUserMessage(transcript);
+      if (await this.tryReplayFromCache(transcript)) {
+        return;
+      }
       this.runPipeline(transcript);
     });
 
@@ -699,6 +731,7 @@ export class CompanionManager {
         const final = await this.browser.navigate(url);
         console.log(`[CompanionManager] tool navigate("${url}") -> ${final ?? 'REJECTED'}`);
         this.lastDomResult = { tool: 'navigate', result: { ok: !!final, url: final ?? null } };
+        if (final) this.recordStep('navigate', { url });
         // Browser nav steals z-order on Windows — re-promote overlay so the diamond stays visible.
         setTimeout(() => this.overlayManager.bringToFront(), 200);
         return;
@@ -730,6 +763,7 @@ export class CompanionManager {
         const target = map.find((e) => e.n === n) ?? (await this.browser.getElementMap()).find((e) => e.n === n);
         const elementText = target?.text ?? '';
         if (isDangerousAction(elementText, reason)) {
+          this.runHadConfirmation = true;
           this.pendingConfirmation = { tool: 'click', n, elementText, reason };
           const prompt = `About to click "${elementText || `#${n}`}". Want me to go ahead?`;
           console.log(`[CompanionManager] click(${n}) -> CONFIRMATION REQUIRED: ${prompt}`);
@@ -740,6 +774,7 @@ export class CompanionManager {
         const result = await this.browser.clickByNumber(n);
         console.log(`[CompanionManager] click(${n}) -> ${JSON.stringify(result)}`);
         this.lastDomResult = { tool: 'click', result };
+        if (result.ok) this.recordStep('click', { reason }, elementText);
         setTimeout(() => this.overlayManager.bringToFront(), 200);
         return;
       }
@@ -758,6 +793,7 @@ export class CompanionManager {
         const target = map.find((e) => e.n === n);
         const elementText = target?.text ?? '';
         if (submit && isDangerousAction(elementText)) {
+          this.runHadConfirmation = true;
           this.pendingConfirmation = { tool: 'type_text', n, text, submit, elementText, reason };
           const prompt = `About to type "${text}" and submit. Want me to go ahead?`;
           console.log(`[CompanionManager] type_text(${n}) -> CONFIRMATION REQUIRED`);
@@ -768,6 +804,7 @@ export class CompanionManager {
         const result = await this.browser.typeByNumber(n, text, submit);
         console.log(`[CompanionManager] type_text(${n}, ${JSON.stringify(text)}, submit=${submit}) -> ${JSON.stringify(result)}`);
         this.lastDomResult = { tool: 'type_text', result };
+        if (result.ok) this.recordStep('type_text', { text, submit }, elementText);
         if (submit) setTimeout(() => this.overlayManager.bringToFront(), 200);
         return;
       }
@@ -778,6 +815,7 @@ export class CompanionManager {
         const result = await this.browser.scrollPage(direction, amount);
         console.log(`[CompanionManager] scroll(${direction}, ${amount}) -> ${JSON.stringify(result)}`);
         this.lastDomResult = { tool: 'scroll', result };
+        if (result.ok) this.recordStep('scroll', { direction, amount });
         return;
       }
 
@@ -786,12 +824,129 @@ export class CompanionManager {
         const preview = typeof result.text === 'string' ? result.text.slice(0, 80).replace(/\s+/g, ' ') : '';
         console.log(`[CompanionManager] read_page -> "${preview}..."`);
         this.lastDomResult = { tool: 'read_page', result };
+        if (result.ok) this.recordStep('read_page', {});
         return;
       }
 
       default:
         console.warn(`[CompanionManager] Unknown tool: ${name}`);
     }
+  }
+
+  // ── P3: Action cache — record + replay ─────────────────────────────────────
+
+  /** Append a successfully executed tool step to the current run's recording. */
+  private recordStep(tool: CachedTool, args: Record<string, unknown>, fingerprint?: string): void {
+    if (!this.currentRunSteps) return;
+    const step: CachedStep = { tool, args };
+    if (fingerprint) step.targetFingerprint = fingerprint;
+    this.currentRunSteps.push(step);
+  }
+
+  /** Per-tool settle delay so replayed steps see a stable page, mirroring the
+   *  model-driven loop's timing. */
+  private settleMsFor(tool: string): number {
+    return tool === 'navigate' ? 2200
+      : tool === 'scroll' ? 120
+      : tool === 'click' ? 1000
+      : tool === 'read_page' ? 0
+      : 700;
+  }
+
+  /**
+   * If the transcript matches a cached run, REPLAY its steps directly — no LLM.
+   * Each click/type_text target is re-resolved against the live element map via
+   * its stored fingerprint before acting. Any mismatch or step error aborts the
+   * replay, invalidates the entry, and returns false so the caller falls through
+   * to the normal Gemini loop with the original transcript. Returns true only on
+   * a fully successful replay (model skipped entirely).
+   */
+  private async tryReplayFromCache(transcript: string): Promise<boolean> {
+    if (!this.actionCache || !this.browser) return false;
+    if (this.pendingPipelineAbort) return false;
+
+    const intentKey = normalizeIntent(transcript);
+    if (!intentKey) return false;
+    const entry = this.actionCache.lookup(intentKey);
+    if (!entry || entry.steps.length === 0) return false;
+
+    // Start-page check: steps that begin with a click/type depend on already
+    // being on the recorded origin. A navigate-first run is origin-independent.
+    // If the origin doesn't match, this replay simply isn't applicable now —
+    // fall through WITHOUT invalidating (the entry may be valid elsewhere).
+    if (entry.steps[0].tool !== 'navigate' && entry.startUrlPattern) {
+      const curOrigin = originOf(this.browser.getCurrentUrl());
+      if (curOrigin !== entry.startUrlPattern) return false;
+    }
+
+    console.log(`[ActionCache] Replay hit for "${intentKey}" (${entry.steps.length} steps, ${entry.hits} prior hits)`);
+
+    // Set up run state as a lightweight pipeline (no model, no history push
+    // until we know it succeeded — so a mid-replay fallthrough doesn't double-
+    // record the user turn).
+    this.lastTranscript = transcript;
+    this.setState('processing');
+    this.resetTTSStream();
+    this.aggregatedResponseText = '';
+    this.lastDomResult = null;
+    this.pendingConfirmation = null;
+    this.currentRunSteps = null; // do NOT re-record during replay
+
+    for (const step of entry.steps) {
+      if (this.pendingPipelineAbort) {
+        this.setState('idle');
+        return false;
+      }
+      const input: Record<string, unknown> = { ...step.args };
+
+      if (step.tool === 'click' || step.tool === 'type_text') {
+        const map = await this.browser.getElementMap();
+        const match = resolveFingerprint(step.targetFingerprint, map);
+        if (!match) {
+          console.log(`[ActionCache] Fingerprint miss ("${step.targetFingerprint}") — invalidating "${intentKey}"`);
+          this.actionCache.invalidate(intentKey);
+          return false;
+        }
+        input.n = match.n;
+      }
+
+      await this.dispatchTool({ id: 'replay', name: step.tool, input });
+
+      // A cached step should never be confirmation-gated (we don't record those),
+      // but if one resolves to a dangerous element now, bail safely — never
+      // auto-execute a gated action on replay.
+      if (this.pendingConfirmation) {
+        this.pendingConfirmation = null;
+        console.log(`[ActionCache] Replay step became confirmation-gated — invalidating "${intentKey}"`);
+        this.actionCache.invalidate(intentKey);
+        return false;
+      }
+
+      const lastDom = this.lastDomResult as { tool: string; result: DomToolResult } | null;
+      const res = lastDom?.result;
+      if (!res || res.ok === false) {
+        console.log(`[ActionCache] Replay step failed (${step.tool}) — invalidating "${intentKey}"`);
+        this.actionCache.invalidate(intentKey);
+        return false;
+      }
+
+      await new Promise((r) => setTimeout(r, this.settleMsFor(step.tool)));
+    }
+
+    // Full success — commit the turn, speak a canned completion, skip the model.
+    this.actionCache.markHit(intentKey);
+    this.conversationStore.addMessage('user', transcript);
+    this.conversationHistory.push({ role: 'user', content: transcript });
+
+    const reply = `Done — ${intentKey}.`;
+    this.conversationStore.addMessage('assistant', reply);
+    this.conversationHistory.push({ role: 'assistant', content: reply });
+    this.broadcastToAll(IPC.RESPONSE_CHUNK, { text: reply, accumulated: reply });
+    this.enqueueTTS(reply);
+    this.sealTTSPlayback();
+    this.broadcastToAll(IPC.RESPONSE_COMPLETE);
+    console.log(`[ActionCache] Replay complete for "${intentKey}"`);
+    return true;
   }
 
   /**
@@ -886,6 +1041,11 @@ export class CompanionManager {
     this.lastCleanAccumulated = '';
     this.toolsRanThisTurn = 0;
     this.inAgentLoop = true;
+
+    // P3: begin recording this run for the action cache.
+    this.currentRunSteps = this.actionCache ? [] : null;
+    this.runHadConfirmation = false;
+    this.runStartUrl = this.browser?.getCurrentUrl() ?? '';
 
     // Persist the user turn once up front; the assistant turn accumulates across
     // agent-loop iterations and gets persisted at the end.
@@ -1099,6 +1259,23 @@ export class CompanionManager {
     if (this.conversationHistory.length > maxEntries) {
       this.conversationHistory = this.conversationHistory.slice(-maxEntries);
     }
+
+    // P3: cache this run's tool sequence if it's cleanly repeatable.
+    if (this.actionCache && this.currentRunSteps) {
+      const steps = this.currentRunSteps;
+      this.currentRunSteps = null;
+      const cacheable = shouldCache({
+        steps,
+        completedCleanly: !this.pendingPipelineAbort,
+        hadConfirmationGated: this.runHadConfirmation,
+        transcript,
+      });
+      if (cacheable) {
+        this.actionCache.recordRun(normalizeIntent(transcript), steps, this.runStartUrl);
+        console.log(`[ActionCache] Recorded "${normalizeIntent(transcript)}" (${steps.length} steps)`);
+      }
+    }
+
     this.broadcastToAll(IPC.RESPONSE_COMPLETE);
 
     if (this.pendingPipelineAbort || !panelReply.trim()) {

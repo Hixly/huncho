@@ -15,6 +15,9 @@ export const DUXY_CONFIG = {
   sttEngine: 'moonshine' as 'moonshine' | 'assemblyai',
   // Moonshine model size: 'base' (more accurate, default) or 'tiny' (low-VRAM fallback).
   moonshineModel: 'base' as 'base' | 'tiny',
+  // Action cache (Stagehand-v3 pattern): replay repeated voice commands instantly
+  // by re-running the recorded tool sequence, skipping the LLM entirely.
+  actionCacheEnabled: true,
   briefModeAppendix: `
 
 BRIEF MODE (ACTIVE — overrides ALL other length guidance including examples above):
