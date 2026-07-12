@@ -1,9 +1,11 @@
 import { ipcMain, BrowserWindow, screen, app } from 'electron';
+import * as path from 'path';
 import { IPC, VoiceState, RequestModelChangePayload } from '../shared/ipc-types';
 import { DUXY_CONFIG } from './config';
 import { GlobalHotkeyMonitor } from './GlobalHotkeyMonitor';
 import { ScreenCaptureManager, ScreenshotInfo } from './ScreenCaptureManager';
 import { AudioRecorder } from './AudioRecorder';
+import { MoonshineTranscriber } from './stt/MoonshineTranscriber';
 import { ClaudeAPIClient, ConversationMessage, CursorPointEvent } from './ClaudeAPIClient';
 import { GeminiAPIClient } from './GeminiAPIClient';
 import { ElevenLabsTTSClient } from './ElevenLabsTTSClient';
@@ -118,6 +120,21 @@ export class CompanionManager {
 
     this.screenCapture = new ScreenCaptureManager();
     this.audioRecorder = new AudioRecorder();
+
+    // Local, keyless STT via Moonshine (default engine). Cache weights under
+    // Electron userData so they persist across app updates. The AudioRecorder
+    // falls back to the cloud Whisper proxy automatically if this errors.
+    if (DUXY_CONFIG.sttEngine === 'moonshine') {
+      const cacheDir = path.join(app.getPath('userData'), 'models');
+      const moonshine = new MoonshineTranscriber({
+        cacheDir,
+        model: DUXY_CONFIG.moonshineModel,
+      });
+      this.audioRecorder.setLocalTranscriber(moonshine);
+      // Warm up in the background so the first utterance is fast (downloads
+      // weights on first run, ~cached thereafter). Never blocks startup.
+      void moonshine.warmup();
+    }
     this.claudeClient = new ClaudeAPIClient();
     this.geminiClient = new GeminiAPIClient();
     this.ttsClient = new ElevenLabsTTSClient();

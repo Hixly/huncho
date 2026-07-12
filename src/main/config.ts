@@ -8,6 +8,13 @@ export const DUXY_CONFIG = {
   maxConversationHistory: 10, // number of turns (user+assistant pairs) to keep
   ttsModel: 'eleven_flash_v2_5',
   assemblyAITokenExpirySeconds: 480,
+  // Speech-to-text engine. 'moonshine' = local, keyless on-device transcription
+  // via transformers.js (default, no cloud round-trip). 'assemblyai' selects the
+  // cloud path. The cloud Whisper-proxy is always kept as an automatic fallback
+  // when the local transcriber is unavailable or errors.
+  sttEngine: 'moonshine' as 'moonshine' | 'assemblyai',
+  // Moonshine model size: 'base' (more accurate, default) or 'tiny' (low-VRAM fallback).
+  moonshineModel: 'base' as 'base' | 'tiny',
   briefModeAppendix: `
 
 BRIEF MODE (ACTIVE — overrides ALL other length guidance including examples above):
