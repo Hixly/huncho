@@ -24,8 +24,41 @@ async function prewarmMic(): Promise<void> {
       video: false,
     });
     console.log('[Panel] Mic pre-warmed and ready');
+    startWakeWordTap();
   } catch (err) {
     console.error('[Panel] Mic pre-warm failed:', err);
+  }
+}
+
+// ── ALWAYS-ON WAKE WORD TAP ──
+// Taps the pre-warmed stream at 16kHz and streams Int16 PCM to the main
+// process, where Porcupine listens for the wake word fully on-device.
+// Runs alongside MediaRecorder (multiple consumers of one stream are fine).
+let wakeContext: AudioContext | null = null;
+
+function startWakeWordTap(): void {
+  if (!warmedStream || wakeContext) return;
+  try {
+    wakeContext = new AudioContext({ sampleRate: 16000 });
+    const source = wakeContext.createMediaStreamSource(warmedStream);
+    // 2048 samples @16kHz = one IPC message every ~128ms — cheap and steady.
+    const processor = wakeContext.createScriptProcessor(2048, 1, 1);
+    source.connect(processor);
+    processor.connect(wakeContext.destination); // required for onaudioprocess to fire
+    processor.onaudioprocess = (e) => {
+      const float32 = e.inputBuffer.getChannelData(0);
+      const int16 = new Int16Array(float32.length);
+      for (let i = 0; i < float32.length; i++) {
+        const s = Math.max(-1, Math.min(1, float32[i]));
+        int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+      }
+      const b64 = btoa(String.fromCharCode(...new Uint8Array(int16.buffer)));
+      (window.electronAPI as any).sendWakePcmChunk?.({ pcmBase64: b64 });
+    };
+    console.log('[Panel] Wake word mic tap running (16kHz)');
+  } catch (err) {
+    console.error('[Panel] Wake word tap failed:', err);
+    wakeContext = null;
   }
 }
 

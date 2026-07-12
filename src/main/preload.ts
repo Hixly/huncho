@@ -99,6 +99,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sendMicPcmChunk: (payload: MicPcmChunkPayload) =>
     ipcRenderer.send(IPC.MIC_PCM_CHUNK, payload),
 
+  sendWakePcmChunk: (payload: { pcmBase64: string }) =>
+    ipcRenderer.send(IPC.WAKE_PCM_CHUNK, payload),
+
   sendAudioPowerLevel: (payload: AudioPowerLevelPayload) =>
     ipcRenderer.send(IPC.AUDIO_POWER_LEVEL, payload),
 

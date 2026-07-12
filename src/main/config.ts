@@ -2,8 +2,8 @@ export const DUXY_CONFIG = {
   workerBaseURL: 'https://duxy-worker.matthixon.workers.dev',
   defaultModel: 'gemini-2.5-flash',
   pushToTalkKey: { ctrl: true, shift: true, space: true }, // NOTE: currently unused - real hotkey is Alt+D, hardcoded in GlobalHotkeyMonitor.ts
-  panelWidth: 320,
-  panelHeight: 580,
+  panelWidth: 344,
+  panelHeight: 600,
   overlayAlwaysOnTop: true,
   maxConversationHistory: 10, // number of turns (user+assistant pairs) to keep
   ttsModel: 'eleven_flash_v2_5',

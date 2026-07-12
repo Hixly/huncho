@@ -52,7 +52,7 @@ const UserBubble: React.FC<{ text: string; timestamp?: number; pending?: boolean
       {text}
     </div>
     {timestamp && (
-      <div style={{ fontSize: '10px', color: DS.colors.textMuted, paddingRight: '4px' }}>
+      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '8.5px', letterSpacing: '0.08em', color: DS.colors.textMuted, paddingRight: '4px', opacity: 0.75 }}>
         {formatTime(timestamp)}
       </div>
     )}
@@ -83,7 +83,7 @@ const HunchoBubble: React.FC<{ text: string; timestamp?: number; streaming?: boo
         )}
       </div>
       {timestamp && !streaming && (
-        <div style={{ fontSize: '10px', color: DS.colors.textMuted, paddingLeft: '4px' }}>
+        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '8.5px', letterSpacing: '0.08em', color: DS.colors.textMuted, paddingLeft: '4px', opacity: 0.75 }}>
           {formatTime(timestamp)}
         </div>
       )}
@@ -269,11 +269,16 @@ export const App: React.FC = () => {
       userSelect: 'none',
     }}>
 
+      {/* ── Chrome accent strip ── */}
+      <div style={{
+        height: '2px', flexShrink: 0,
+        background: 'linear-gradient(90deg, transparent 0%, #4a4a54 18%, #c8c8c0 50%, #4a4a54 82%, transparent 100%)',
+      }} />
+
       {/* ── Header — this is the drag handle ── */}
       <div style={{
-        padding: '11px 14px',
+        padding: '11px 14px 10px',
         borderBottom: `1px solid ${DS.colors.borderLight}`,
-        borderTop: `2px solid ${DS.colors.accent}`,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -282,31 +287,31 @@ export const App: React.FC = () => {
         WebkitAppRegion: 'drag' as any,
         cursor: 'grab',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
-          <HunchoDiamond width={26} height={42} />
-          <div>
-            <div style={{ fontSize: '15px', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-              Huncho
+        <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0, flexShrink: 1, overflow: 'hidden' }}>
+          <HunchoDiamond width={24} height={40} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{
+              fontFamily: "'Cinzel Decorative', serif",
+              fontSize: '15px', fontWeight: 900, letterSpacing: '0.26em', lineHeight: 1.1,
+              whiteSpace: 'nowrap',
+              background: DS.colors.chromeGradient,
+              WebkitBackgroundClip: 'text', backgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+            }}>
+              HUNCHO
             </div>
-            <div style={{ fontSize: '10px', color: DS.colors.textMuted, marginTop: '1px' }}>
+            <div style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: '8px', letterSpacing: '0.20em', textTransform: 'uppercase',
+              color: DS.colors.textMuted, marginTop: '2px', opacity: 0.8,
+              whiteSpace: 'nowrap',
+            }}>
               Your AI Companion
             </div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', WebkitAppRegion: 'no-drag' as any }}>
-          {/* State badge */}
-          {voiceState !== 'idle' && (
-            <div style={{
-              padding: '2px 8px', borderRadius: DS.borderRadius.full,
-              backgroundColor: DS.colors.accentDim,
-              border: `1px solid ${DS.colors.accent}44`,
-              fontSize: '10px', color: DS.colors.accent, fontWeight: 600, letterSpacing: '0.05em',
-            }}>
-              {isListening ? 'LISTENING' : isProcessing ? 'THINKING' : 'SPEAKING'}
-            </div>
-          )}
-
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0, WebkitAppRegion: 'no-drag' as any }}>
           {/* New Chat */}
           <button
             onClick={() => window.electronAPI.clearHistory()}
@@ -366,6 +371,28 @@ export const App: React.FC = () => {
         </div>
       </div>
 
+      {/* ── Status strip — HUD sub-bar, gives the title row room to breathe ── */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '4px 14px', flexShrink: 0,
+        borderBottom: `1px solid ${DS.colors.borderLight}`,
+        backgroundColor: DS.colors.surface1,
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: '8px', letterSpacing: '0.18em', textTransform: 'uppercase',
+        color: voiceState === 'idle' ? DS.colors.textMuted : DS.colors.accent,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{
+            width: '6px', height: '6px', borderRadius: '50%', flexShrink: 0,
+            backgroundColor: isListening ? DS.colors.success : isProcessing ? DS.colors.warning : isResponding ? DS.colors.info : DS.colors.success,
+            boxShadow: `0 0 6px ${isListening ? DS.colors.success : isProcessing ? DS.colors.warning : isResponding ? DS.colors.info : DS.colors.success}`,
+            animation: 'pulse 2.4s ease-in-out infinite',
+          }} />
+          {isListening ? 'Listening' : isProcessing ? 'Thinking' : isResponding ? 'Speaking' : 'Standing By'}
+        </div>
+        <div style={{ opacity: 0.6 }}>Hixly Research Project</div>
+      </div>
+
       {/* ── Chat area ── */}
       <div style={{
         flex: 1,
@@ -380,29 +407,38 @@ export const App: React.FC = () => {
         {messages.length === 0 && !pendingUser && !streamText && (
           <div style={{
             flex: 1, display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center', gap: '10px',
+            alignItems: 'center', justifyContent: 'center', gap: '12px',
             color: DS.colors.textMuted, fontSize: '12px', textAlign: 'center',
             padding: '40px 20px',
           }}>
-            <HunchoDiamond width={36} height={58} />
+            <div style={{ animation: 'breathe 4.5s ease-in-out infinite' }}>
+              <HunchoDiamond width={36} height={58} />
+            </div>
             <div style={{
-              fontSize: '20px',
-              fontWeight: 700,
-              letterSpacing: '-0.03em',
+              fontFamily: "'Cinzel Decorative', serif",
+              fontSize: '19px',
+              fontWeight: 900,
+              letterSpacing: '0.34em',
+              paddingLeft: '0.34em',
               background: DS.colors.chromeGradient,
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
               backgroundClip: 'text',
             }}>
-              Huncho
+              HUNCHO
             </div>
-            <div style={{ marginTop: '4px', lineHeight: 1.6 }}>
-              Hold <span style={{
+            <div style={{
+              width: '90px', height: '1px',
+              background: 'linear-gradient(90deg, transparent, rgba(58,58,62,0.45), transparent)',
+            }} />
+            <div style={{ lineHeight: 1.7, fontSize: '12px' }}>
+              Hit <span style={{
                 backgroundColor: DS.colors.surface2,
                 border: `1px solid ${DS.colors.border}`,
                 borderRadius: '4px', padding: '1px 6px',
-                fontFamily: 'monospace', fontSize: '11px', color: DS.colors.textSecondary,
-              }}>Ctrl+H</span> to talk to Huncho
+                fontFamily: "'JetBrains Mono', monospace", fontSize: '10.5px', color: DS.colors.textSecondary,
+              }}>Ctrl+H</span> or say the word.<br />
+              I got you from there.
             </div>
           </div>
         )}
@@ -437,7 +473,11 @@ export const App: React.FC = () => {
         WebkitAppRegion: 'no-drag' as any,
         background: `linear-gradient(0deg, ${DS.colors.surface3} 0%, ${DS.colors.background} 100%)`,
       }}>
-        <span style={{ fontSize: '11px', color: DS.colors.textMuted }}>Model</span>
+        <span style={{
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: '8.5px', letterSpacing: '0.22em', textTransform: 'uppercase',
+          color: DS.colors.textMuted,
+        }}>Model</span>
         <ModelPicker currentModel={currentModel} onModelChange={handleModelChange} />
         <div style={{ flex: 1 }} />
         <button
@@ -449,15 +489,15 @@ export const App: React.FC = () => {
             border: `1px solid ${briefMode ? DS.colors.accent : DS.colors.border}`,
             backgroundColor: briefMode ? DS.colors.accentDim : 'transparent',
             color: briefMode ? DS.colors.accent : DS.colors.textMuted,
-            fontSize: '10px', fontWeight: briefMode ? 700 : 400,
-            letterSpacing: '0.04em',
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: '8.5px', fontWeight: briefMode ? 700 : 400,
+            letterSpacing: '0.18em', textTransform: 'uppercase',
             cursor: 'pointer',
-            fontFamily: DS.typography.fontFamily,
             transition: 'all 0.15s ease',
             flexShrink: 0,
           }}
         >
-          {briefMode ? 'BRIEF ✓' : 'Brief'}
+          {briefMode ? 'Brief ✓' : 'Brief'}
         </button>
       </div>
 
@@ -469,6 +509,14 @@ export const App: React.FC = () => {
         @keyframes blink {
           0%, 100% { opacity: 1; }
           50% { opacity: 0; }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.35; }
+        }
+        @keyframes breathe {
+          0%, 100% { transform: translateY(0) scale(1); }
+          50% { transform: translateY(-3px) scale(1.03); }
         }
         ::-webkit-scrollbar { width: 3px; }
         ::-webkit-scrollbar-track { background: transparent; }

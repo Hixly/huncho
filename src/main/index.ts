@@ -8,6 +8,7 @@ import { OverlayManager } from './OverlayManager';
 import { GlobalHotkeyMonitor } from './GlobalHotkeyMonitor';
 import { CompanionManager } from './CompanionManager';
 import { MainWindow } from './MainWindow';
+import { WakeWordMonitor } from './WakeWordMonitor';
 
 // Load huncho/.env into process.env (no dotenv dependency). Values already in
 // the environment win. Used for GEMINI_API_KEY and any future local secrets.
@@ -55,6 +56,7 @@ let trayManager: TrayManager | null = null;
 let overlayManager: OverlayManager | null = null;
 let hotkeyMonitor: GlobalHotkeyMonitor | null = null;
 let companionManager: CompanionManager | null = null;
+let wakeWordMonitor: WakeWordMonitor | null = null;
 
 function getPanelHtmlPath(): string {
   // In dev mode: use Vite dev server; in prod: use built file
@@ -149,6 +151,13 @@ app.whenReady().then(async () => {
   // Start global hotkey monitor
   hotkeyMonitor.start();
 
+  // Wake word ("Jarvis" built-in / custom "Huncho" ppn) — dormant without
+  // PICOVOICE_ACCESS_KEY in .env, Ctrl+H always remains available.
+  wakeWordMonitor = new WakeWordMonitor();
+  if (wakeWordMonitor.start()) {
+    wakeWordMonitor.on('wake', () => companionManager?.handleWake());
+  }
+
   console.log('[Huncho] Ready — press Ctrl+H to talk (toggle: tap to start, tap to stop)');
 
   // Show the panel + overlay on launch so Huncho is visible immediately
@@ -164,6 +173,7 @@ app.whenReady().then(async () => {
 app.on('will-quit', () => {
   console.log('[Huncho] Shutting down...');
   hotkeyMonitor?.stop();
+  wakeWordMonitor?.destroy();
   companionManager?.destroy();
   overlayManager?.destroy();
   trayManager?.destroy();

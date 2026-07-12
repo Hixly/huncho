@@ -68,6 +68,12 @@ export class CompanionManager {
   // (no speech AND no action) so Huncho can say so instead of going silent.
   private toolsRanThisTurn = 0;
 
+  // Wake-word session state ("Jarvis" → listen with VAD auto-stop)
+  private wakeListenActive = false;
+  private wakeSpeechHeard = false;
+  private wakeLastLoudAt = 0;
+  private wakeListenStartAt = 0;
+
   // Text accumulated across all agent-loop iterations for the current turn —
   // used to keep the panel's streaming chat display continuous instead of
   // resetting on each Claude follow-up call.
@@ -268,10 +274,27 @@ export class CompanionManager {
     this.hotkeyMonitor.on('pttPress', () => this.handlePttPress());
     this.hotkeyMonitor.on('pttRelease', () => this.handlePttRelease());
 
-    // IPC: power level forwarding from renderer to overlay + in-page diamond
+    // IPC: power level forwarding from renderer to overlay + in-page diamond.
+    // Doubles as a poor-man's VAD for wake-word sessions: hotkey listens are
+    // ended by a second Ctrl+H, but a "Jarvis"-initiated listen has no key
+    // release — so we auto-stop once speech has been heard followed by
+    // ~1.4s of silence (or a 12s hard cap).
     ipcMain.on(IPC.AUDIO_POWER_LEVEL, (_event, payload) => {
       this.broadcastToAll(IPC.AUDIO_POWER_LEVEL, payload);
       this.browser?.setAudioLevel(payload.level);
+      if (this.wakeListenActive && this.state === 'listening') {
+        const now = Date.now();
+        const level = typeof payload.level === 'number' ? payload.level : 0;
+        if (level > 0.12) this.wakeSpeechHeard = true;
+        if (level > 0.08) this.wakeLastLoudAt = now;
+        const silentLongEnough = this.wakeSpeechHeard && now - this.wakeLastLoudAt > 1400;
+        const hardCap = now - this.wakeListenStartAt > 12000;
+        if (silentLongEnough || hardCap) {
+          this.wakeListenActive = false;
+          console.log(`[CompanionManager] Wake session auto-stop (${silentLongEnough ? 'silence' : 'cap'})`);
+          this.hotkeyMonitor.simulatePttRelease();
+        }
+      }
     });
 
     // IPC: model change request from renderer
@@ -385,6 +408,24 @@ export class CompanionManager {
     }
   }
 
+  /**
+   * Wake word detected ("Jarvis"/"Huncho"). Semantics mirror Ctrl+H:
+   *   idle → start listening (with VAD auto-stop, since there's no key release)
+   *   speaking/thinking → interrupt (say it again to talk)
+   *   already listening → ignore (don't cancel mid-sentence)
+   */
+  handleWake(): void {
+    if (this.state === 'listening') return;
+    const startingListen = this.state === 'idle';
+    if (startingListen) {
+      this.wakeListenActive = true;
+      this.wakeSpeechHeard = false;
+      this.wakeLastLoudAt = Date.now();
+      this.wakeListenStartAt = Date.now();
+    }
+    this.hotkeyMonitor.simulatePttPress();
+  }
+
   private async handlePttPress(): Promise<void> {
     console.log(`[CompanionManager] PTT pressed (current state: ${this.state})`);
 
@@ -449,6 +490,7 @@ export class CompanionManager {
   }
 
   private async handlePttRelease(): Promise<void> {
+    this.wakeListenActive = false; // manual stop or VAD stop — either way, session over
     if (this.state !== 'listening') {
       console.warn(`[CompanionManager] PTT released but state is ${this.state}`);
       return;

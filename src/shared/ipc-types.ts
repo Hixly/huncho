@@ -36,6 +36,8 @@ export const IPC = {
   // Hide/show the desktop overlay duck while the cursor is over the browser
   // (the browser uses its own in-page diamond, so the desktop one would dup).
   DUCK_VISIBLE: 'DUXY_DUCK_VISIBLE',
+  // Always-on 16kHz PCM stream from the panel mic tap → WakeWordMonitor
+  WAKE_PCM_CHUNK: 'DUXY_WAKE_PCM_CHUNK',
 } as const;
 
 export type VoiceState = 'idle' | 'listening' | 'processing' | 'responding';
@@ -75,6 +77,10 @@ export interface ModelChangedPayload {
 
 export interface MicPcmChunkPayload {
   pcmBase64: string;
+}
+
+export interface WakePcmChunkPayload {
+  pcmBase64: string; // 16kHz mono Int16 PCM
 }
 
 export interface TtsPlayAudioPayload {
