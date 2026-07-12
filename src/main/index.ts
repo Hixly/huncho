@@ -151,8 +151,8 @@ app.whenReady().then(async () => {
   // Start global hotkey monitor
   hotkeyMonitor.start();
 
-  // Wake word ("Jarvis" built-in / custom "Huncho" ppn) — dormant without
-  // PICOVOICE_ACCESS_KEY in .env, Ctrl+H always remains available.
+  // Wake word ("Jarvis" pretrained / custom "Huncho" ONNX) — fully local and
+  // keyless via openWakeWord. Ctrl+H always remains available.
   wakeWordMonitor = new WakeWordMonitor();
   if (wakeWordMonitor.start()) {
     wakeWordMonitor.on('wake', () => companionManager?.handleWake());
