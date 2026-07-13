@@ -23,6 +23,16 @@ export const DUXY_CONFIG = {
   // top few into the prompt on future commands. Fully offline (transformers.js
   // embeddings + local JSON). Set false to disable extraction and recall.
   memoryEnabled: true,
+  // Voice endpointing: after the wake word (or Ctrl+H) starts listening, the
+  // mic auto-stops once the user finishes speaking instead of running until a
+  // manual kill. Thresholds are in milliseconds. Set enabled=false to fall back
+  // to the manual-toggle / power-level VAD behaviour.
+  endpointing: {
+    enabled: true,
+    silenceMs: 1400,     // trailing silence after speech that ends the utterance
+    noSpeechMs: 6000,    // never-spoke timeout → cancel + discard
+    maxUtteranceMs: 15000, // hard cap on a single utterance
+  },
   briefModeAppendix: `
 
 BRIEF MODE (ACTIVE — overrides ALL other length guidance including examples above):

@@ -209,6 +209,30 @@ export class CompanionManager {
       console.log('[CompanionManager] History cleared');
     });
 
+    // Voice endpointing: the AudioRecorder feeds each buffered 16kHz frame to an
+    // Endpointer while recording. On 'stop' (user finished speaking) we route
+    // through the EXACT same stop path as a manual Ctrl+H toggle —
+    // simulatePttRelease() → handlePttRelease() → audioRecorder.stopRecording()
+    // — so transcription/TTS/processing flow identically for wake- and
+    // Ctrl+H-initiated listens. On 'cancel' (no usable speech) we stop and
+    // discard without a processing spin. A manual stop that lands first flips
+    // state out of 'listening' and wins (this guard then no-ops).
+    this.audioRecorder.setEndpointCallback((reason: 'stop' | 'cancel') => {
+      if (this.state !== 'listening') return;
+      this.wakeListenActive = false;
+      if (reason === 'stop') {
+        console.log('[CompanionManager] Endpointer auto-stop → manual stop path');
+        this.hotkeyMonitor.simulatePttRelease();
+      } else {
+        console.log('[CompanionManager] Endpointer cancel → discard listen, back to idle');
+        void this.audioRecorder.stopRecording(); // discardCurrent already set
+        this.hotkeyMonitor.resetPttState();
+        this.setState('idle');
+        this.trayManager.doneRecording();
+        this.overlayManager.hideAll();
+      }
+    });
+
     // Wire up Web Speech API transcript callback from AudioRecorder
     this.audioRecorder.setTranscriptReadyCallback(async (transcript: string) => {
       console.log(`[CompanionManager] Transcript received from renderer: "${transcript}"`);
@@ -348,7 +372,10 @@ export class CompanionManager {
     ipcMain.on(IPC.AUDIO_POWER_LEVEL, (_event, payload) => {
       this.broadcastToAll(IPC.AUDIO_POWER_LEVEL, payload);
       this.browser?.setAudioLevel(payload.level);
-      if (this.wakeListenActive && this.state === 'listening') {
+      // Legacy power-level VAD — only when PCM-based endpointing is disabled.
+      // When endpointing is on (default), Endpointer owns auto-stop for BOTH
+      // wake- and Ctrl+H-initiated listens, so this block is skipped.
+      if (!DUXY_CONFIG.endpointing?.enabled && this.wakeListenActive && this.state === 'listening') {
         const now = Date.now();
         const level = typeof payload.level === 'number' ? payload.level : 0;
         if (level > 0.12) this.wakeSpeechHeard = true;
