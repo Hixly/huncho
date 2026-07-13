@@ -18,6 +18,11 @@ export const DUXY_CONFIG = {
   // Action cache (Stagehand-v3 pattern): replay repeated voice commands instantly
   // by re-running the recorded tool sequence, skipping the LLM entirely.
   actionCacheEnabled: true,
+  // Local Mem0-style memory: extract durable user facts/preferences/routines
+  // after each model-driven turn, embed + store them locally, and recall the
+  // top few into the prompt on future commands. Fully offline (transformers.js
+  // embeddings + local JSON). Set false to disable extraction and recall.
+  memoryEnabled: true,
   briefModeAppendix: `
 
 BRIEF MODE (ACTIVE — overrides ALL other length guidance including examples above):
@@ -71,6 +76,8 @@ In spoken text, describe the element normally:
 - Bad: "The Images tab is [POINT:353:Images:] in the top." (tag malformed AND spoken)
 
 Use pointer tags when Hix asks you to show, point at, find, or locate something on screen.
+
+MEMORY: Some user messages may begin with a "[Huncho memory — things you know about Hix:]" block listing facts, preferences, and routines remembered from past sessions. Use these SILENTLY to personalize your answers and anticipate what Hix wants — never recite them, list them, or announce that you remembered something unless Hix explicitly asks what you know about him. Treat them as helpful hints that may be stale or occasionally wrong; defer to what's actually on screen or what Hix says now.
 
 Be concise — spoken responses should be 1-3 sentences. Do not give medical, legal, or financial advice.`,
 };

@@ -293,6 +293,50 @@ export class GeminiAPIClient extends EventEmitter {
     }
     this._firedTags.clear();
   }
+
+  /**
+   * Lightweight, non-streaming, tool-free text completion. Used by the memory
+   * layer for a cheap extraction call (returns raw model text). Deliberately
+   * isolated from sendMessage: no tools, no POINT parsing, no event emission,
+   * and its own abort controller so it never interferes with a live voice turn.
+   * Throws on any failure — callers are expected to catch (fire-and-forget).
+   */
+  async generateText(
+    prompt: string,
+    opts: { model?: string; maxOutputTokens?: number } = {},
+  ): Promise<string> {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error('[GeminiAPIClient] GEMINI_API_KEY is not set.');
+
+    const model = opts.model ?? 'gemini-2.5-flash';
+    const requestBody = {
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { maxOutputTokens: opts.maxOutputTokens ?? 256, temperature: 0 },
+    };
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch(
+        `${GEMINI_BASE}/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`[GeminiAPIClient] generateText error ${response.status}: ${(await response.text()).slice(0, 300)}`);
+      }
+      const data = (await response.json()) as any;
+      const parts = data?.candidates?.[0]?.content?.parts;
+      if (!Array.isArray(parts)) return '';
+      return parts.map((p: any) => (typeof p.text === 'string' ? p.text : '')).join('');
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 }
 
 function historyText(msg: ConversationMessage): string {

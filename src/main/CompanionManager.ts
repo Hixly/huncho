@@ -32,6 +32,8 @@ import {
   resolveFingerprint,
   shouldCache,
 } from './tools/action-cache';
+import { MemoryStore, buildExtractionPrompt, parseExtraction } from './memory/MemoryStore';
+import { embed } from './memory/embeddings';
 
 export class CompanionManager {
   private state: VoiceState = 'idle';
@@ -57,6 +59,10 @@ export class CompanionManager {
   // P3 — Action cache. Records model-driven tool sequences keyed by normalized
   // transcript so repeat commands replay instantly without an LLM round-trip.
   private actionCache: ActionCache | null = null;
+
+  // P4 — Local Mem0-style memory. Durable user facts/preferences/routines are
+  // extracted after model-driven turns and recalled into future prompts.
+  private memoryStore: MemoryStore | null = null;
   // Steps executed during the CURRENT model-driven run, accumulated in
   // dispatchTool. null while replaying (so replay's own tool calls aren't
   // re-recorded) or when caching is disabled.
@@ -169,6 +175,16 @@ export class CompanionManager {
       const filePath = path.join(app.getPath('userData'), 'action-cache.json');
       this.actionCache = new ActionCache({ filePath });
     }
+
+    // Memory persists to userData/memories.json. The embed fn wraps the local
+    // transformers.js pipeline (Float32Array → number[] for JSON persistence).
+    if (DUXY_CONFIG.memoryEnabled) {
+      const filePath = path.join(app.getPath('userData'), 'memories.json');
+      this.memoryStore = new MemoryStore({
+        filePath,
+        embed: async (text) => Array.from(await embed(text)),
+      });
+    }
   }
 
   async initialize(): Promise<void> {
@@ -176,6 +192,7 @@ export class CompanionManager {
     this.conversationStore.load();
     this.personalityStore.load();
     this.actionCache?.load();
+    this.memoryStore?.load();
     this.conversationHistory = this.conversationStore.toClaudeHistory(DUXY_CONFIG.maxConversationHistory);
     console.log(`[CompanionManager] Restored ${this.conversationHistory.length} messages into Claude context`);
 
@@ -1061,6 +1078,13 @@ export class CompanionManager {
     let currentUserMessage = transcript;
     const multiStep = transcriptImpliesMultiStep(transcript);
 
+    // P4: recall relevant memories and prepend them (model-visible only — the
+    // stored user turn above stays raw). Best-effort: never block/fail the turn.
+    const memoryBlock = await this.recallMemoryBlock(transcript);
+    if (memoryBlock) {
+      currentUserMessage = `${memoryBlock}\n\n${transcript}`;
+    }
+
     const pipelineDeadline = setTimeout(() => {
       if (this.state === 'processing' || this.state === 'responding') {
         console.warn('[CompanionManager] Pipeline timeout — aborting stuck turn');
@@ -1278,11 +1302,63 @@ export class CompanionManager {
 
     this.broadcastToAll(IPC.RESPONSE_COMPLETE);
 
+    // P4: fire-and-forget memory extraction for this completed model-driven turn.
+    // One call per turn; skipped for cache replays (which never reach here).
+    if (!this.pendingPipelineAbort && panelReply.trim()) {
+      void this.extractMemories(transcript, panelReply);
+    }
+
     if (this.pendingPipelineAbort || !panelReply.trim()) {
       this.setState('idle');
       this.overlayManager.hideAll();
     }
     // Otherwise state stays 'responding' until renderer fires TTS_COMPLETE.
+  }
+
+  // ── P4: Memory recall + extraction ─────────────────────────────────────────
+
+  /**
+   * Recall the top memories for a transcript and format them as a prompt block,
+   * or '' when memory is disabled, there are no hits, or recall errors. Never
+   * throws — recall must not block or fail the spoken response path.
+   */
+  private async recallMemoryBlock(transcript: string): Promise<string> {
+    if (!this.memoryStore) return '';
+    try {
+      const hits = await this.memoryStore.recall(transcript, 3, 0.35);
+      if (hits.length === 0) return '';
+      const lines = hits.map((m) => `- ${m.text}`).join('\n');
+      return `[Huncho memory — things you know about Hix:]\n${lines}`;
+    } catch (err) {
+      console.warn('[CompanionManager] Memory recall failed:', err);
+      return '';
+    }
+  }
+
+  /**
+   * Fire-and-forget: ask the cheap Gemini path to extract durable user
+   * facts/preferences/routines from the just-completed turn, then store each
+   * (dedupe handled by MemoryStore.add). Fully guarded — extraction failures are
+   * logged and swallowed so they can never disturb the voice pipeline.
+   */
+  private async extractMemories(userText: string, assistantText: string): Promise<void> {
+    if (!this.memoryStore) return;
+    try {
+      const prompt = buildExtractionPrompt(userText, assistantText);
+      const raw = await this.geminiClient.generateText(prompt, { maxOutputTokens: 256 });
+      const extracted = parseExtraction(raw);
+      if (extracted.length === 0) return;
+      for (const m of extracted) {
+        try {
+          await this.memoryStore.add(m.text, m.kind);
+        } catch (err) {
+          console.warn('[CompanionManager] Memory add failed:', err);
+        }
+      }
+      console.log(`[Memory] Extracted ${extracted.length} memory item(s) from turn`);
+    } catch (err) {
+      console.warn('[CompanionManager] Memory extraction failed:', err);
+    }
   }
 
   /** Engine routing: gemini-* models go direct to Gemini, everything else to the Claude worker. */
