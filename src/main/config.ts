@@ -1,3 +1,5 @@
+import { DEFAULT_WAKE_VARIANTS } from './wake/wake-phrase';
+
 export const DUXY_CONFIG = {
   workerBaseURL: 'https://duxy-worker.matthixon.workers.dev',
   defaultModel: 'gemini-2.5-flash',
@@ -15,6 +17,26 @@ export const DUXY_CONFIG = {
   sttEngine: 'moonshine' as 'moonshine' | 'assemblyai',
   // Moonshine model size: 'base' (more accurate, default) or 'tiny' (low-VRAM fallback).
   moonshineModel: 'base' as 'base' | 'tiny',
+  // Wake word engine.
+  //   'phrase' (default) — no training, no trademark: a local RMS segmenter
+  //     slices short utterances out of the always-on mic tap, transcribes each
+  //     with a local Moonshine model, and matches the text against
+  //     `wakeVariants`. Costs a little CPU per utterance but recognizes
+  //     "Huncho", a word no pretrained model exists for.
+  //   'onnx' — the openWakeWord pipeline (near-zero CPU, but needs a trained
+  //     model). The bundled pretrained model is "hey jarvis", which is Marvel/
+  //     Disney IP and must NOT ship publicly — train assets/wake/huncho.onnx.
+  wakeEngine: 'phrase' as 'phrase' | 'onnx',
+  // The phrase Huncho answers to (documentation/UI; matching uses wakeVariants).
+  wakePhrase: 'Huncho',
+  // Accepted transcriptions of the wake phrase, including known ASR mishears.
+  // One place to tune: drop entries that false-wake for you, add ones your
+  // voice consistently produces. See src/main/wake/wake-phrase.ts.
+  wakeVariants: DEFAULT_WAKE_VARIANTS as string[],
+  // Moonshine size used for WAKE checks only ('tiny' is ~3x cheaper than
+  // 'base' and plenty for matching a single known word). The main STT path
+  // keeps using `moonshineModel` above.
+  wakeMoonshineModel: 'tiny' as 'tiny' | 'base',
   // Action cache (Stagehand-v3 pattern): replay repeated voice commands instantly
   // by re-running the recorded tool sequence, skipping the LLM entirely.
   actionCacheEnabled: true,

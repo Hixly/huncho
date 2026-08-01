@@ -2,9 +2,16 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // --- Mocks (declared before importing the module under test) ---------------
 
+// This file covers the LEGACY openWakeWord engine, which is no longer the
+// default — force it on. (The phrase engine has its own suite.)
+vi.mock('../config', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../config')>();
+  return { DUXY_CONFIG: { ...actual.DUXY_CONFIG, wakeEngine: 'onnx' } };
+});
+
 const ipcHandlers: Record<string, (event: unknown, payload: unknown) => void> = {};
 vi.mock('electron', () => ({
-  app: { getAppPath: () => '/app' },
+  app: { getAppPath: () => '/app', getPath: () => '/userData' },
   ipcMain: {
     on: (ch: string, cb: (event: unknown, payload: unknown) => void) => { ipcHandlers[ch] = cb; },
     removeAllListeners: (ch?: string) => { if (ch) delete ipcHandlers[ch]; },

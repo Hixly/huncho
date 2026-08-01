@@ -66,6 +66,7 @@ const LEADING_FILLERS = [
   'would you',
   'will you',
   'huncho',
+  'honcho', // common ASR mishear of the wake word — see wake/wake-phrase.ts
   'jarvis',
   'yo',
   'um',

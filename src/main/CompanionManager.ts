@@ -56,6 +56,10 @@ export class CompanionManager {
 
   private browser: BrowserSurface | null = null;
 
+  // Wake-word monitor, paused whenever Huncho is not idle. Typed structurally
+  // (not as WakeWordMonitor) to keep this module free of the wake/ONNX imports.
+  private wakeMonitor: { setPaused(paused: boolean): void } | null = null;
+
   // P3 — Action cache. Records model-driven tool sequences keyed by normalized
   // transcript so repeat commands replay instantly without an LLM round-trip.
   private actionCache: ActionCache | null = null;
@@ -98,7 +102,7 @@ export class CompanionManager {
   // (no speech AND no action) so Huncho can say so instead of going silent.
   private toolsRanThisTurn = 0;
 
-  // Wake-word session state ("Jarvis" → listen with VAD auto-stop)
+  // Wake-word session state ("Huncho" → listen with VAD auto-stop)
   private wakeListenActive = false;
   private wakeSpeechHeard = false;
   private wakeLastLoudAt = 0;
@@ -366,7 +370,7 @@ export class CompanionManager {
 
     // IPC: power level forwarding from renderer to overlay + in-page diamond.
     // Doubles as a poor-man's VAD for wake-word sessions: hotkey listens are
-    // ended by a second Ctrl+H, but a "Jarvis"-initiated listen has no key
+    // ended by a second Ctrl+H, but a wake-word-initiated listen has no key
     // release — so we auto-stop once speech has been heard followed by
     // ~1.4s of silence (or a 12s hard cap).
     ipcMain.on(IPC.AUDIO_POWER_LEVEL, (_event, payload) => {
@@ -502,7 +506,7 @@ export class CompanionManager {
   }
 
   /**
-   * Wake word detected ("Jarvis"/"Huncho"). Semantics mirror Ctrl+H:
+   * Wake word detected ("Huncho"). Semantics mirror Ctrl+H:
    *   idle → start listening (with VAD auto-stop, since there's no key release)
    *   speaking/thinking → interrupt (say it again to talk)
    *   already listening → ignore (don't cancel mid-sentence)
@@ -1399,10 +1403,30 @@ export class CompanionManager {
     this.geminiClient.cancel();
   }
 
+  /**
+   * Attach the wake-word monitor so it can be suspended while Huncho is active.
+   * See setState() for the pause policy.
+   */
+  setWakeMonitor(monitor: { setPaused(paused: boolean): void } | null): void {
+    this.wakeMonitor = monitor;
+    // Sync immediately in case we're already mid-turn when this is wired.
+    monitor?.setPaused(this.state !== 'idle');
+  }
+
   private setState(state: VoiceState): void {
     const prev = this.state;
     this.state = state;
     console.log(`[CompanionManager] State → ${state}`);
+
+    // Wake word is live ONLY while idle. Every departure from idle
+    // (listening/processing/responding) suspends it, and every return —
+    // including the error, abort, junk-transcript, endpointer-cancel and
+    // interrupt paths, which all funnel through setState('idle') — resumes it.
+    // Driving it off the single state choke point is what guarantees the wake
+    // word can never get stuck off, and it's also what stops Huncho's own TTS
+    // (playing out of the speakers into the always-on mic tap during
+    // 'responding') from waking itself.
+    this.wakeMonitor?.setPaused(state !== 'idle');
     this.broadcastToAll(IPC.VOICE_STATE_CHANGED, { state });
     // Sync voice-state chrome (waveform / spinner) to the in-page diamond.
     this.browser?.setVoiceState(state);
@@ -1490,6 +1514,8 @@ export class CompanionManager {
   destroy(): void {
     this.hotkeyMonitor.stop();
     this.cancelAllEngines();
+    // Never leave the wake word suspended behind us.
+    this.wakeMonitor?.setPaused(false);
     if (this.transcriptTimeoutId) {
       clearTimeout(this.transcriptTimeoutId);
       this.transcriptTimeoutId = null;
