@@ -155,12 +155,20 @@ export class AudioRecorder {
   }
 
   private async transcribeAudioViaCloud(audioBase64: string): Promise<void> {
+    // No cloud proxy configured (public / local-only build): local Moonshine is
+    // the only STT path. Surface a clear error instead of fetching a dead URL.
+    if (!DUXY_CONFIG.cloudFallbackUrl) {
+      console.error(
+        '[AudioRecorder] Local transcription unavailable and no cloud fallback is configured — cannot transcribe this utterance.',
+      );
+      return;
+    }
     try {
       // Decode base64 to raw binary and send directly (avoids JSON encode/decode corruption)
       const binary = Buffer.from(audioBase64, 'base64');
       console.log(`[AudioRecorder] Sending ${binary.length} bytes to worker`);
 
-      const response = await fetch(`${DUXY_CONFIG.workerBaseURL}/transcribe`, {
+      const response = await fetch(`${DUXY_CONFIG.cloudFallbackUrl}/transcribe`, {
         method: 'POST',
         headers: { 'content-type': 'audio/webm' },
         body: binary,

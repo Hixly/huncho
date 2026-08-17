@@ -27,8 +27,13 @@ export class AssemblyAITranscriptionProvider extends EventEmitter {
   }
 
   private async refreshToken(): Promise<void> {
+    if (!DUXY_CONFIG.cloudFallbackUrl) {
+      throw new Error(
+        '[AssemblyAI] Unavailable in this build (no cloud proxy configured). Local Moonshine STT is the default.',
+      );
+    }
     console.log('[AssemblyAI] Fetching streaming token...');
-    const response = await fetch(`${DUXY_CONFIG.workerBaseURL}/transcribe-token`, {
+    const response = await fetch(`${DUXY_CONFIG.cloudFallbackUrl}/transcribe-token`, {
       method: 'POST',
     });
 

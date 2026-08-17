@@ -1,7 +1,12 @@
 import { DEFAULT_WAKE_VARIANTS } from './wake/wake-phrase';
 
 export const DUXY_CONFIG = {
-  workerBaseURL: 'https://duxy-worker.matthixon.workers.dev',
+  // Optional self-hosted proxy for the Claude engine + cloud Whisper/AssemblyAI
+  // fallback. LEAVE EMPTY for the public / local-only build: an empty string
+  // disables every cloud path cleanly (no request is ever made to it). Point it
+  // at your own deployed worker only if you self-host one. Never ship a personal
+  // domain here.
+  cloudFallbackUrl: '',
   defaultModel: 'gemini-2.5-flash',
   pushToTalkKey: { ctrl: true, shift: true, space: true }, // NOTE: currently unused - real hotkey is Alt+D, hardcoded in GlobalHotkeyMonitor.ts
   panelWidth: 344,

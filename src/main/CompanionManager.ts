@@ -7,7 +7,8 @@ import { ScreenCaptureManager, ScreenshotInfo } from './ScreenCaptureManager';
 import { AudioRecorder } from './AudioRecorder';
 import { MoonshineTranscriber } from './stt/MoonshineTranscriber';
 import { ClaudeAPIClient, ConversationMessage, CursorPointEvent } from './ClaudeAPIClient';
-import { GeminiAPIClient } from './GeminiAPIClient';
+import { GeminiAPIClient, NO_GEMINI_KEY_MESSAGE } from './GeminiAPIClient';
+import { SettingsStore } from './SettingsStore';
 import { ElevenLabsTTSClient } from './ElevenLabsTTSClient';
 import { EdgeTTSClient } from './EdgeTTSClient';
 import { OverlayManager } from './OverlayManager';
@@ -48,6 +49,7 @@ export class CompanionManager {
   private audioRecorder: AudioRecorder;
   private claudeClient: ClaudeAPIClient;
   private geminiClient: GeminiAPIClient;
+  private settingsStore: SettingsStore;
   private ttsClient: ElevenLabsTTSClient;
   private edgeTTS: EdgeTTSClient;
   private overlayManager: OverlayManager;
@@ -167,8 +169,10 @@ export class CompanionManager {
       // weights on first run, ~cached thereafter). Never blocks startup.
       void moonshine.warmup();
     }
+    // Settings (bring-your-own Gemini key) live in userData/settings.json.
+    this.settingsStore = new SettingsStore();
     this.claudeClient = new ClaudeAPIClient();
-    this.geminiClient = new GeminiAPIClient();
+    this.geminiClient = new GeminiAPIClient(this.settingsStore);
     this.ttsClient = new ElevenLabsTTSClient();
     this.edgeTTS = new EdgeTTSClient();
     this.conversationStore = new ConversationStore();
@@ -203,6 +207,14 @@ export class CompanionManager {
     // IPC: panel requests full chat history on mount
     ipcMain.on(IPC.REQUEST_CHAT_HISTORY, (event) => {
       event.reply(IPC.CHAT_HISTORY, { messages: this.conversationStore.getMessages() });
+    });
+
+    // IPC: settings (bring-your-own Gemini key). The renderer only ever learns
+    // whether a key exists — the stored value is NEVER returned to the renderer.
+    ipcMain.handle(IPC.SETTINGS_GET, () => ({ hasKey: this.settingsStore.hasGeminiKey() }));
+    ipcMain.handle(IPC.SETTINGS_SET_GEMINI_KEY, (_event, key: unknown) => {
+      this.settingsStore.setGeminiKey(typeof key === 'string' ? key : '');
+      return { hasKey: this.settingsStore.hasGeminiKey() };
     });
 
     // IPC: clear all history and reset context
@@ -1217,7 +1229,12 @@ export class CompanionManager {
           break;
         }
         console.error('[CompanionManager] Claude API error:', err);
-        iterText = this.briefMode ? 'Something went wrong.' : 'Sorry, I hit an error. Try again.';
+        // Surface the missing-key message verbatim so the user knows to open
+        // Settings; other errors get the generic line.
+        const msg = typeof err?.message === 'string' ? err.message : '';
+        iterText = msg.includes(NO_GEMINI_KEY_MESSAGE)
+          ? NO_GEMINI_KEY_MESSAGE
+          : this.briefMode ? 'Something went wrong.' : 'Sorry, I hit an error. Try again.';
         this.broadcastToAll(IPC.RESPONSE_CHUNK, { text: iterText, accumulated: iterText });
         break;
       }
@@ -1394,7 +1411,19 @@ export class CompanionManager {
 
   /** Engine routing: gemini-* models go direct to Gemini, everything else to the Claude worker. */
   private activeEngine(): ClaudeAPIClient | GeminiAPIClient {
-    return this.currentModel.startsWith('gemini') ? this.geminiClient : this.claudeClient;
+    // The Claude engine requires a self-hosted proxy (cloudFallbackUrl). In the
+    // public / local-only build that's empty, so a 'Sonnet' selection degrades
+    // gracefully to Gemini instead of crashing on a dead URL.
+    if (!this.currentModel.startsWith('gemini')) {
+      if (!DUXY_CONFIG.cloudFallbackUrl) {
+        console.warn(
+          `[CompanionManager] Model "${this.currentModel}" needs a cloud proxy that isn't configured — falling back to Gemini.`,
+        );
+        return this.geminiClient;
+      }
+      return this.claudeClient;
+    }
+    return this.geminiClient;
   }
 
   /** Abort any in-flight request on BOTH engines (interrupt / stuck recovery / shutdown). */
@@ -1527,6 +1556,9 @@ export class CompanionManager {
     ]) {
       ipcMain.removeAllListeners(channel);
     }
+    // invoke-style handlers are removed separately.
+    ipcMain.removeHandler(IPC.SETTINGS_GET);
+    ipcMain.removeHandler(IPC.SETTINGS_SET_GEMINI_KEY);
   }
 }
 

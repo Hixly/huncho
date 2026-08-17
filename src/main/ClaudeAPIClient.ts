@@ -115,9 +115,20 @@ export class ClaudeAPIClient extends EventEmitter {
 
     this._firedTags.clear(); // reset per-message
     this._currentToolUse = null; // reset per-message tool-use accumulator
+
+    // The Claude engine only exists behind a self-hosted proxy. In the public /
+    // local-only build cloudFallbackUrl is empty, so this engine is unavailable
+    // — fail with a clear, user-facing message instead of fetching a dead URL.
+    // (CompanionManager routes the model picker to Gemini in that case; this is
+    // belt-and-suspenders for any direct caller.)
+    if (!DUXY_CONFIG.cloudFallbackUrl) {
+      throw new Error(
+        'Claude is unavailable in this build (no cloud proxy configured). Switch to a Gemini model in the panel.',
+      );
+    }
     console.log(`[ClaudeAPIClient] Sending request with model ${options.model}, ${options.screenshotBase64List.length} screenshot(s)`);
 
-    const response = await fetch(`${DUXY_CONFIG.workerBaseURL}/chat`, {
+    const response = await fetch(`${DUXY_CONFIG.cloudFallbackUrl}/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

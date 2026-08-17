@@ -218,7 +218,7 @@ export class BrowserSurface extends EventEmitter {
              <div class="hud">
                <div class="grp"><span class="dot"></span><span>Standing By</span></div>
                <div class="grp"><span id="hud-date"></span><span class="sep">/</span><span id="hud-clock"></span></div>
-               <div class="grp"><span>Hixly Research Project</span></div>
+               <div class="grp"><span>AI Companion</span></div>
              </div>
 
              <script>

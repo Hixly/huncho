@@ -126,5 +126,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on(IPC.BROWSER_DID_NAVIGATE, h);
     return () => ipcRenderer.removeListener(IPC.BROWSER_DID_NAVIGATE, h);
   },
+
+  // Settings — request/response. The key value is write-only: setGeminiKey sends
+  // it to main, and both calls only ever return { hasKey }.
+  getSettings: () => ipcRenderer.invoke(IPC.SETTINGS_GET),
+  setGeminiKey: (key: string) => ipcRenderer.invoke(IPC.SETTINGS_SET_GEMINI_KEY, key),
 });
 

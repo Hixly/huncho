@@ -1,4 +1,4 @@
-// Huncho Design System — Chrome / Off-White Theme (matches Hixly Research V3)
+// Huncho Design System — Chrome / Off-White Theme
 export const DS = {
   colors: {
     // Backgrounds (layered elevation, light)

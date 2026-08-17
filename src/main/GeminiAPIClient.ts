@@ -7,8 +7,13 @@ import {
   CursorPointEvent,
   ToolUseEvent,
 } from './ClaudeAPIClient';
+import { SettingsStore } from './SettingsStore';
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+
+// Shown to the user (via the dead-turn/error path) when no key is available.
+export const NO_GEMINI_KEY_MESSAGE =
+  'No Gemini API key set. Open Settings and paste your key (free at aistudio.google.com/apikey).';
 
 /**
  * Gemini engine for Huncho. Exposes the exact same surface as ClaudeAPIClient
@@ -23,14 +28,33 @@ export class GeminiAPIClient extends EventEmitter {
   private _firedTags = new Set<string>();
   private _toolCallCounter = 0;
   private _emptyRetry = false;
+  private settings: SettingsStore | null;
+
+  /**
+   * @param settings Injected SettingsStore (the user's bring-your-own Gemini
+   *   key lives there). Optional so the class stays testable; when omitted the
+   *   client resolves the key from the environment only.
+   */
+  constructor(settings?: SettingsStore) {
+    super();
+    this.settings = settings ?? null;
+  }
+
+  /**
+   * Resolve the Gemini key: user-provided SettingsStore value first, then the
+   * GEMINI_API_KEY env var (dev fallback). Throws a clear, user-facing error
+   * when neither is present — the message is surfaced to the user via the
+   * pipeline's dead-turn/error path.
+   */
+  private resolveApiKey(): string {
+    const fromSettings = this.settings?.getGeminiKey() ?? null;
+    const key = fromSettings ?? process.env.GEMINI_API_KEY ?? '';
+    if (!key.trim()) throw new Error(NO_GEMINI_KEY_MESSAGE);
+    return key.trim();
+  }
 
   async sendMessage(options: ClaudeRequestOptions): Promise<{ fullText: string; durationMs: number }> {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error(
-        '[GeminiAPIClient] GEMINI_API_KEY is not set. Add it to huncho/.env (get a key at aistudio.google.com/apikey).',
-      );
-    }
+    const apiKey = this.resolveApiKey();
 
     if (this.currentAbortController) {
       this.currentAbortController.abort();
@@ -305,8 +329,7 @@ export class GeminiAPIClient extends EventEmitter {
     prompt: string,
     opts: { model?: string; maxOutputTokens?: number } = {},
   ): Promise<string> {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error('[GeminiAPIClient] GEMINI_API_KEY is not set.');
+    const apiKey = this.resolveApiKey();
 
     const model = opts.model ?? 'gemini-2.5-flash';
     const requestBody = {

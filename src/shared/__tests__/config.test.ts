@@ -7,8 +7,18 @@ describe('Huncho config', () => {
     expect(DUXY_CONFIG.systemPrompt).not.toContain('You are Duxy');
   });
 
-  it('has a worker base URL and a default model', () => {
-    expect(DUXY_CONFIG.workerBaseURL).toMatch(/^https:\/\//);
+  it('ships no personal cloud proxy (public build: cloudFallbackUrl is empty)', () => {
+    // Public builds must not point at anyone's personal worker. Empty = every
+    // cloud path is disabled cleanly.
+    expect(DUXY_CONFIG.cloudFallbackUrl).toBe('');
+  });
+
+  it('has a default model', () => {
     expect(DUXY_CONFIG.defaultModel.length).toBeGreaterThan(0);
+  });
+
+  it('does not embed any personal domain in the system prompt', () => {
+    expect(DUXY_CONFIG.systemPrompt).not.toContain('matthixon');
+    expect(DUXY_CONFIG.systemPrompt).not.toContain('duxy-worker');
   });
 });

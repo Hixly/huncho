@@ -17,7 +17,7 @@ vi.mock('electron', () => ({
 // Mutable config so tests can flip the engine. Wrapped in vi.hoisted so it
 // exists before the hoisted vi.mock factory runs.
 const mockConfig = vi.hoisted(() => ({
-  workerBaseURL: 'https://worker.test',
+  cloudFallbackUrl: 'https://worker.test',
   sttEngine: 'moonshine' as 'moonshine' | 'assemblyai',
   moonshineModel: 'base' as 'base' | 'tiny',
 }));
@@ -47,6 +47,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 describe('AudioRecorder STT engine selection & fallback', () => {
   beforeEach(() => {
     mockConfig.sttEngine = 'moonshine';
+    mockConfig.cloudFallbackUrl = 'https://worker.test';
     vi.restoreAllMocks();
     (global as any).fetch = vi.fn(async () => ({
       ok: true,
@@ -133,6 +134,27 @@ describe('AudioRecorder STT engine selection & fallback', () => {
     expect(transcribe).not.toHaveBeenCalled();
     expect((global as any).fetch).toHaveBeenCalledTimes(1);
     expect(got).toEqual(['cloud transcript']);
+  });
+
+  it('does NOT fetch the cloud when no fallback URL is configured (public build)', async () => {
+    // Empty cloudFallbackUrl = local-only build. When Moonshine yields nothing,
+    // the recorder must surface an error, never fetch a dead URL.
+    mockConfig.cloudFallbackUrl = '';
+    const rec = new AudioRecorder();
+    rec.setLocalTranscriber({
+      transcribe: vi.fn(async () => { throw new Error('model exploded'); }),
+    } as unknown as MoonshineTranscriber);
+    const got: string[] = [];
+    rec.setTranscriptReadyCallback((t) => got.push(t));
+
+    await rec.startRecording();
+    feedWakePcm([1, 2, 3]);
+    await rec.stopRecording();
+    feedAudioBlob();
+    await flush();
+
+    expect((global as any).fetch).not.toHaveBeenCalled();
+    expect(got).toEqual([]); // no transcript produced, but nothing crashed
   });
 
   it('does not buffer wake PCM when not recording', async () => {

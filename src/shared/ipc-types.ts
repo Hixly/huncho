@@ -38,7 +38,16 @@ export const IPC = {
   DUCK_VISIBLE: 'DUXY_DUCK_VISIBLE',
   // Always-on 16kHz PCM stream from the panel mic tap → WakeWordMonitor
   WAKE_PCM_CHUNK: 'DUXY_WAKE_PCM_CHUNK',
+  // Settings (bring-your-own Gemini key). Request/response via ipcRenderer.invoke.
+  // The renderer only ever learns whether a key EXISTS — the value is never
+  // sent back (write-only from the user's perspective).
+  SETTINGS_GET: 'DUXY_SETTINGS_GET',
+  SETTINGS_SET_GEMINI_KEY: 'DUXY_SETTINGS_SET_GEMINI_KEY',
 } as const;
+
+export interface SettingsStatus {
+  hasKey: boolean;
+}
 
 export type VoiceState = 'idle' | 'listening' | 'processing' | 'responding';
 
@@ -148,6 +157,11 @@ export interface ElectronAPI {
   // Browser navigation (urlbar renderer)
   browserNavigate: (url: string) => void;
   onBrowserDidNavigate: (cb: (payload: { url: string }) => void) => () => void;
+
+  // Settings (bring-your-own Gemini key). getSettings returns only {hasKey};
+  // setGeminiKey persists the value in main and returns the new {hasKey}.
+  getSettings: () => Promise<SettingsStatus>;
+  setGeminiKey: (key: string) => Promise<SettingsStatus>;
 }
 
 declare global {

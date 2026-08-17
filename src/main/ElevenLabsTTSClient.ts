@@ -29,9 +29,15 @@ export class ElevenLabsTTSClient {
         },
       };
 
+      if (!DUXY_CONFIG.cloudFallbackUrl) {
+        throw new Error(
+          '[ElevenLabsTTS] Unavailable in this build (no cloud proxy configured). Huncho uses free local EdgeTTS instead.',
+        );
+      }
+
       console.log(`[ElevenLabsTTS] Requesting TTS for: "${text.slice(0, 80)}${text.length > 80 ? '...' : ''}"`);
 
-      const response = await fetch(`${DUXY_CONFIG.workerBaseURL}/tts`, {
+      const response = await fetch(`${DUXY_CONFIG.cloudFallbackUrl}/tts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

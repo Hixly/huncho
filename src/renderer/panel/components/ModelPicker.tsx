@@ -9,7 +9,7 @@ interface ModelPickerProps {
 const MODELS = [
   { id: 'gemini-2.5-flash', label: 'Flash', description: 'Gemini Flash — fast, cheap, great for browsing' },
   { id: 'gemini-2.5-pro', label: 'Pro', description: 'Gemini Pro — most capable' },
-  { id: 'claude-sonnet-4-5', label: 'Sonnet', description: 'Claude fallback (via worker)' },
+  { id: 'claude-sonnet-4-5', label: 'Sonnet', description: 'Claude — needs a self-hosted proxy; falls back to Gemini otherwise' },
 ];
 
 export const ModelPicker: React.FC<ModelPickerProps> = ({ currentModel, onModelChange }) => {

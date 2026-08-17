@@ -4,6 +4,7 @@ import { DS } from './components/design-system';
 import { ModelPicker } from './components/ModelPicker';
 import { WaveformDisplay } from './components/WaveformDisplay';
 import { HunchoDiamond } from './components/HunchoDiamond';
+import { SettingsView } from './components/SettingsView';
 
 // ── Typing dots ───────────────────────────────────────────────────────────────
 const TypingDots: React.FC = () => (
@@ -129,6 +130,12 @@ export const App: React.FC = () => {
   const [quitHover, setQuitHover] = useState(false);
   const [minHover, setMinHover] = useState(false);
   const [clearHover, setClearHover] = useState(false);
+  const [gearHover, setGearHover] = useState(false);
+
+  // Settings / first-run gate. `hasKey === null` = not yet checked (show nothing
+  // decision-making until known); false = first run (force settings view).
+  const [hasKey, setHasKey] = useState<boolean | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   // Refs to avoid stale closures in IPC callbacks
   const pendingUserRef = useRef('');
@@ -149,6 +156,15 @@ export const App: React.FC = () => {
 
     // Request persisted history on mount
     api.requestChatHistory();
+
+    // Check whether a Gemini key is set. No key → force the first-run view.
+    api.getSettings().then(({ hasKey: k }) => {
+      setHasKey(k);
+      if (!k) setShowSettings(true);
+    }).catch(() => {
+      // If the check fails, assume a key exists rather than trapping the user.
+      setHasKey(true);
+    });
 
     const cleanups = [
       api.onChatHistory(({ messages: stored }) => {
@@ -312,6 +328,25 @@ export const App: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0, WebkitAppRegion: 'no-drag' as any }}>
+          {/* Settings (Gemini key) */}
+          <button
+            onClick={() => setShowSettings((s) => !s)}
+            onMouseEnter={() => setGearHover(true)}
+            onMouseLeave={() => setGearHover(false)}
+            title="Settings — Gemini API key"
+            style={{
+              width: '26px', height: '26px', borderRadius: DS.borderRadius.sm,
+              border: `1px solid ${gearHover || showSettings ? DS.colors.accent + '88' : DS.colors.border}`,
+              backgroundColor: gearHover || showSettings ? DS.colors.accentDim : 'transparent',
+              color: gearHover || showSettings ? DS.colors.accent : DS.colors.textMuted,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '14px', lineHeight: 1, fontFamily: DS.typography.fontFamily,
+              transition: 'all 0.15s ease', flexShrink: 0,
+            }}
+          >
+            ⚙
+          </button>
+
           {/* New Chat */}
           <button
             onClick={() => window.electronAPI.clearHistory()}
@@ -390,10 +425,24 @@ export const App: React.FC = () => {
           }} />
           {isListening ? 'Listening' : isProcessing ? 'Thinking' : isResponding ? 'Speaking' : 'Standing By'}
         </div>
-        <div style={{ opacity: 0.6 }}>Hixly Research Project</div>
+        <div style={{ opacity: 0.6 }}>AI Companion</div>
       </div>
 
+      {/* ── Settings / first-run view (replaces chat when active) ── */}
+      {(showSettings || hasKey === false) && (
+        <SettingsView
+          firstRun={hasKey === false}
+          hasKey={hasKey === true}
+          onSaved={(k) => {
+            setHasKey(k);
+            if (k) setShowSettings(false);
+          }}
+          onClose={hasKey === false ? undefined : () => setShowSettings(false)}
+        />
+      )}
+
       {/* ── Chat area ── */}
+      {!(showSettings || hasKey === false) && (
       <div style={{
         flex: 1,
         minHeight: 0,
@@ -463,6 +512,7 @@ export const App: React.FC = () => {
 
         <div ref={bottomRef} />
       </div>
+      )}
 
       {/* ── Footer: model picker + brief mode toggle ── */}
       <div style={{
