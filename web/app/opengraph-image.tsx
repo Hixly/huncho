@@ -63,7 +63,7 @@ export default function OgImage() {
             textTransform: 'uppercase',
           }}
         >
-          WINDOWS · VOICE-NATIVE · EARLY ACCESS
+          WINDOWS · VOICE-NATIVE · FREE
         </div>
       </div>
     ),

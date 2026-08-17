@@ -1,11 +1,11 @@
 import Reveal from './Reveal';
 
 const QA = [
-  { q: 'What does it run on?', a: 'Windows first. Huncho is a native desktop app with its own built-in browser — you sign in to your sites once and it stays signed in.' },
-  { q: 'What does it cost?', a: 'Early access is free. Pricing comes later, and early-access members get first word and founder terms.' },
-  { q: 'Where does my voice go?', a: 'Audio is transcribed and processed to carry out your command, not stored for training. Your browser sessions and logins never leave your machine.' },
+  { q: 'What does it run on?', a: 'Windows 10 and 11. Huncho is a native desktop app with its own built-in browser — you sign in to your sites once and it stays signed in.' },
+  { q: 'What does it cost?', a: 'It is free. You bring your own Google Gemini API key, which is also free from Google — get one in about 30 seconds and paste it in on first launch.' },
+  { q: 'Where does my voice go?', a: 'Nowhere. Your speech is transcribed locally on your machine, and your browsing and logins never leave your computer. The only thing sent out is the text of your command, to Google Gemini using your own key.' },
   { q: 'When does it ask permission?', a: 'Almost never — Huncho acts freely on your word. The single exception: anything that spends money requires your explicit confirmation first.' },
-  { q: 'When can I get it?', a: 'It is in active development and in daily use by its builder. Join the list — invites go out in waves as builds stabilize.' },
+  { q: 'How do I talk to it?', a: 'Press Ctrl+H and speak, then press again or just stop talking to end the turn. A hands-free wake word is built in but off by default while it is tuned, so Ctrl+H push-to-talk is the primary trigger.' },
 ];
 
 export default function Faq() {

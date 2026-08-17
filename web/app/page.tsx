@@ -3,7 +3,7 @@ import Hero from '@/components/Hero';
 import Capabilities from '@/components/Capabilities';
 import Demo from '@/components/Demo';
 import Faq from '@/components/Faq';
-import Waitlist from '@/components/Waitlist';
+import Download from '@/components/Download';
 
 export default function Page() {
   return (
@@ -13,7 +13,7 @@ export default function Page() {
       <Capabilities />
       <Demo />
       <Faq />
-      <Waitlist />
+      <Download />
       <footer>
         <span>© {new Date().getFullYear()} Huncho</span>
         <span className="sep">·</span>

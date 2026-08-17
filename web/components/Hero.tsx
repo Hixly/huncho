@@ -37,8 +37,8 @@ export default function Hero() {
       <p className="sub">
         A voice-native AI operator for Windows. Say the word — Huncho clicks, types, and browses for you, in its own always-signed-in browser.
       </p>
-      <a className="cta" href="#waitlist">Request Access</a>
-      <div className="meta">Windows · Voice-Native · Early Access</div>
+      <a className="cta" href="#download">Download for Windows</a>
+      <div className="meta">Windows · Voice-Native · Free · Bring your own key</div>
     </div>
   );
 }

@@ -4,7 +4,7 @@ const CAPS = [
   {
     kicker: '01 / VOICE LINK',
     title: 'You speak.',
-    body: 'No menus, no shortcuts. Talk to Huncho like a person — it hears the wake word, understands what you meant, and interrupts gracefully when you change your mind.',
+    body: 'Press Ctrl+H and talk to Huncho like a person — no menus, no clicks. It understands what you meant, and stops gracefully the moment you change your mind.',
   },
   {
     kicker: '02 / EYES + HANDS',

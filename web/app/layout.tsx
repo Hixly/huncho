@@ -9,11 +9,11 @@ const mono = JetBrains_Mono({ weight: ['400', '500'], subsets: ['latin'], variab
 export const metadata: Metadata = {
   title: 'Huncho — Your computer. Hands off.',
   description:
-    'Huncho is a voice-native AI operator for Windows. Speak — it clicks, types, and browses for you. Request early access.',
+    'Huncho is a voice-native AI operator for Windows. Speak — it clicks, types, and browses for you. Free download, bring your own Google Gemini key.',
   metadataBase: new URL('https://huncho.tech'),
   openGraph: {
     title: 'Huncho — Your computer. Hands off.',
-    description: 'A voice-native AI operator for Windows. Request early access.',
+    description: 'A voice-native AI operator for Windows. Free — download and bring your own Gemini key.',
     url: 'https://huncho.tech',
     siteName: 'Huncho',
   },
