@@ -37,6 +37,13 @@ export const DEFAULT_WAKE_VARIANTS: string[] = [
   'poncho',
   'hey poncho',
   'hunter cho',
+  // Observed mishears from live testing (Moonshine tiny). Kept only the ones that
+  // are NOT common standalone words — 'hunter'/'hunch' alone would false-wake in
+  // normal conversation, so they are intentionally excluded.
+  'huncher',
+  'hey huncher',
+  'hunt show',
+  'hunch of',
 ];
 
 const COMBINING_MARKS = /[\u0300-\u036f]/g;

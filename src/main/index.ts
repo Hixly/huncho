@@ -151,15 +151,16 @@ app.whenReady().then(async () => {
   // Start global hotkey monitor
   hotkeyMonitor.start();
 
-  // Wake word — fully local and keyless. Default engine transcribes short
-  // utterances with Moonshine and matches "Huncho" (no training, no trademark);
-  // set wakeEngine: 'onnx' for the openWakeWord path. Ctrl+H always works too.
-  wakeWordMonitor = new WakeWordMonitor();
-  if (wakeWordMonitor.start()) {
-    wakeWordMonitor.on('wake', () => companionManager?.handleWake());
-    // Suspend the wake word whenever Huncho is non-idle, so its own TTS (and
-    // the user's actual command) can't re-trigger it mid-turn.
-    companionManager?.setWakeMonitor(wakeWordMonitor);
+  // Hands-free wake word — opt-in (disabled by default; see config note).
+  // Ctrl+H push-to-talk is the primary trigger and always works.
+  if (DUXY_CONFIG.wakeEnabled) {
+    wakeWordMonitor = new WakeWordMonitor();
+    if (wakeWordMonitor.start()) {
+      wakeWordMonitor.on('wake', () => companionManager?.handleWake());
+      // Suspend the wake word whenever Huncho is non-idle, so its own TTS (and
+      // the user's actual command) can't re-trigger it mid-turn.
+      companionManager?.setWakeMonitor(wakeWordMonitor);
+    }
   }
 
   console.log('[Huncho] Ready — press Ctrl+H to talk (toggle: tap to start, tap to stop)');

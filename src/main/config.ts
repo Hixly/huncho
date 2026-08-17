@@ -17,7 +17,14 @@ export const DUXY_CONFIG = {
   sttEngine: 'moonshine' as 'moonshine' | 'assemblyai',
   // Moonshine model size: 'base' (more accurate, default) or 'tiny' (low-VRAM fallback).
   moonshineModel: 'base' as 'base' | 'tiny',
-  // Wake word engine.
+  // Hands-free wake word. DISABLED by default: general ASR can't reliably
+  // transcribe a made-up word ("Huncho" comes back as huncher/hunter/ancha/…),
+  // so the phrase engine false-negatives too often to trust. Ctrl+H push-to-talk
+  // is the primary trigger and works perfectly. Flip to true to re-enable the
+  // engine below (and tune wakeVariants), or ship a trained assets/wake/huncho.onnx
+  // and set wakeEngine: 'onnx' for a proper always-on model.
+  wakeEnabled: false,
+  // Wake word engine (only used when wakeEnabled is true).
   //   'phrase' (default) — no training, no trademark: a local RMS segmenter
   //     slices short utterances out of the always-on mic tap, transcribes each
   //     with a local Moonshine model, and matches the text against
@@ -36,7 +43,7 @@ export const DUXY_CONFIG = {
   // Moonshine size used for WAKE checks only ('tiny' is ~3x cheaper than
   // 'base' and plenty for matching a single known word). The main STT path
   // keeps using `moonshineModel` above.
-  wakeMoonshineModel: 'tiny' as 'tiny' | 'base',
+  wakeMoonshineModel: 'base' as 'tiny' | 'base', // base >> tiny for an oddball word like "Huncho"
   // Action cache (Stagehand-v3 pattern): replay repeated voice commands instantly
   // by re-running the recorded tool sequence, skipping the LLM entirely.
   actionCacheEnabled: true,
